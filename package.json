@@ -1,0 +1,16 @@
+{
+  "name": "chess-review-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build:web": "node build-web.js"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.2",
+    "@capacitor/cli": "8.6.2",
+    "@capacitor/core": "8.6.2",
+    "chess.js": "1.4.0",
+    "esbuild": "0.28.2",
+    "stockfish": "19.0.1"
+  }
+}

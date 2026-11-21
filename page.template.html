@@ -1,0 +1,840 @@
+<meta charset="utf-8">
+<title>Разбор партий</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Раскладка: одна колонка для телефона. Шапка с партией, доска со шкалой оценки,
+   карточка хода, график, список ходов, итоги, загрузка новой партии. */
+:root {
+  --bg: #f2f5f9;
+  --surface: #ffffff;
+  --ink: #131d2a;
+  --muted: #5a6a7c;
+  --line: #dbe2ea;
+  --accent: #2b67e8;
+  --accent-ink: #ffffff;
+  --sq-light: #e6ebf1;
+  --sq-dark: #8ca3bd;
+  --hl: rgba(255, 207, 51, 0.62);
+  --bar-white: #f7f9fc;
+  --bar-black: #28323f;
+  --graph-fill: rgba(43, 103, 232, 0.16);
+  --graph-line: #2b67e8;
+  --piece-w-fill: #ffffff;
+  --piece-w-stroke: #1b2430;
+  --piece-b-fill: #202a37;
+  --piece-b-stroke: #f3f6fa;
+  --c-legendary-a: #f6b400;
+  --c-legendary-b: #e0278c;
+  --c-brilliant: #14a99a;
+  --c-great: #3f86e0;
+  --c-best: #4f9d2a;
+  --c-excellent: #78ae3a;
+  --c-good: #6a9a8c;
+  --c-book: #a37f58;
+  --c-inaccuracy: #e8b21d;
+  --c-mistake: #ee8a28;
+  --c-miss: #e0557f;
+  --c-blunder: #d93636;
+  --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-chess: "Noto Sans Symbols 2", "Segoe UI Symbol", "DejaVu Sans", "Apple Symbols", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d131a; --surface: #151d27; --ink: #e8eef5; --muted: #93a3b6; --line: #253140;
+    --accent: #6f9bff; --accent-ink: #0b1220;
+    --sq-light: #b4c0cf; --sq-dark: #5d7590;
+    --hl: rgba(255, 207, 51, 0.5);
+    --bar-white: #eef2f7; --bar-black: #0a0f15;
+    --graph-fill: rgba(111, 155, 255, 0.2); --graph-line: #6f9bff;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d131a; --surface: #151d27; --ink: #e8eef5; --muted: #93a3b6; --line: #253140;
+  --accent: #6f9bff; --accent-ink: #0b1220;
+  --sq-light: #b4c0cf; --sq-dark: #5d7590;
+  --hl: rgba(255, 207, 51, 0.5);
+  --bar-white: #eef2f7; --bar-black: #0a0f15;
+  --graph-fill: rgba(111, 155, 255, 0.2); --graph-line: #6f9bff;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.45;
+  padding-block: 12px 28px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+h1, h2 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+button { font: inherit; color: inherit; }
+button:focus-visible, summary:focus-visible, textarea:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.engine-tag { font-size: 12px; color: var(--muted); text-align: right; min-width: 0; }
+.engine-tag b { color: var(--ink); font-weight: 600; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.players { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center; }
+.player { min-width: 0; }
+.player.right { text-align: right; }
+.pname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+.pname span:not(.dot) { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.player.right .pname { justify-content: flex-end; }
+.dot { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--ink); flex: none; }
+.dot.w { background: #fff; } .dot.b { background: #1b2430; }
+.pmeta { font-size: 12.5px; color: var(--muted); }
+.pacc { font-family: var(--font-display); font-weight: 700; font-size: 22px; font-variant-numeric: tabular-nums; }
+.result { font-family: var(--font-display); font-weight: 600; color: var(--muted); font-size: 14px; }
+.gmeta { margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+
+.boardrow { display: flex; gap: 8px; align-items: stretch; }
+.evalbar { width: 26px; border-radius: 8px; overflow: hidden; position: relative; background: var(--bar-black); border: 1px solid var(--line); flex: none; }
+.evalbar .white { position: absolute; left: 0; right: 0; bottom: 0; background: var(--bar-white); transition: height .35s ease; }
+.evalbar.flipped .white { bottom: auto; top: 0; }
+.evalbar .mid { position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(128, 140, 155, .55); }
+.evalbar .num { position: absolute; left: 0; right: 0; text-align: center; font-size: 10.5px; font-weight: 700; font-family: var(--font-display); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.evalbar .num.top { top: 4px; } .evalbar .num.bot { bottom: 4px; }
+.evalbar .num.onwhite { color: #1b2430; } .evalbar .num.onblack { color: #eef2f7; }
+.boardbox { flex: 1; min-width: 0; }
+.board { display: block; width: 100%; height: auto; border-radius: 8px; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.board text { font-family: var(--font-chess); }
+.board .coord { font-family: var(--font-body); font-size: 17px; font-weight: 600; }
+
+.moveinfo { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; min-height: 64px; }
+.mi-title { font-family: var(--font-display); font-size: 18px; font-weight: 700; line-height: 1.2; }
+.mi-eval { font-family: var(--font-display); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13.5px; }
+.mi-note { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
+.mi-note b { color: var(--ink); font-weight: 600; }
+
+.badge { display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; color: #fff; font-family: var(--font-display); font-weight: 700; flex: none; line-height: 1; }
+.badge.lg { width: 46px; height: 46px; font-size: 20px; }
+.badge.sm { width: 17px; height: 17px; font-size: 9.5px; }
+.badge.lg.s3 { font-size: 15px; } .badge.sm.s3 { font-size: 7.5px; letter-spacing: -0.5px; }
+.badge.lg.s2 { font-size: 18px; } .badge.sm.s2 { font-size: 8.5px; }
+.badge.xs { width: 12px; height: 12px; font-size: 0; }
+.cls-legendary { background: linear-gradient(135deg, var(--c-legendary-a), var(--c-legendary-b)); box-shadow: 0 0 0 2px rgba(246,180,0,.35); }
+.cls-brilliant { background: var(--c-brilliant); }
+.cls-great { background: var(--c-great); }
+.cls-best { background: var(--c-best); }
+.cls-excellent { background: var(--c-excellent); }
+.cls-good { background: var(--c-good); }
+.cls-book { background: var(--c-book); }
+.cls-inaccuracy { background: var(--c-inaccuracy); color: #2b2100; }
+.cls-mistake { background: var(--c-mistake); }
+.cls-miss { background: var(--c-miss); }
+.cls-blunder { background: var(--c-blunder); }
+.txt-legendary { background: linear-gradient(90deg, var(--c-legendary-a), var(--c-legendary-b)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.txt-brilliant { color: var(--c-brilliant); } .txt-great { color: var(--c-great); } .txt-best { color: var(--c-best); }
+.txt-excellent { color: var(--c-excellent); } .txt-good { color: var(--c-good); } .txt-book { color: var(--c-book); }
+.txt-inaccuracy { color: var(--c-inaccuracy); } .txt-mistake { color: var(--c-mistake); }
+.txt-miss { color: var(--c-miss); } .txt-blunder { color: var(--c-blunder); }
+
+.controls { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.cbtn { height: 46px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-size: 18px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+.cbtn:active { transform: translateY(1px); }
+.cbtn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.cbtn[disabled] { opacity: .4; cursor: default; }
+
+.graphcard { padding: 12px 12px 8px; }
+.graph { display: block; width: 100%; height: auto; touch-action: none; cursor: pointer; }
+.graph text { font-family: var(--font-body); font-size: 9px; fill: var(--muted); }
+
+.movelist { max-height: 232px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 6px; }
+.mrow { display: grid; grid-template-columns: 30px 1fr 1fr; gap: 4px; align-items: center; }
+.mnum { color: var(--muted); font-size: 12.5px; text-align: right; padding-right: 4px; font-variant-numeric: tabular-nums; }
+.chip { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 8px; border: 0; background: transparent; cursor: pointer; text-align: left; font-weight: 500; min-height: 34px; }
+.chip:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.chip.on { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.chip .san { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.sumgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sumcol { min-width: 0; }
+.sumhead { display: flex; flex-direction: column; gap: 0; margin-bottom: 10px; }
+.sumname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sumacc { font-family: var(--font-display); font-weight: 700; font-size: 24px; font-variant-numeric: tabular-nums; }
+.sumlist { display: flex; flex-direction: column; gap: 5px; }
+.sumrow { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.sumrow .n { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+details.loader { padding: 0; }
+details.loader > summary { list-style: none; cursor: pointer; padding: 14px; font-family: var(--font-display); font-weight: 600; display: flex; align-items: center; justify-content: space-between; }
+details.loader > summary::-webkit-details-marker { display: none; }
+details.loader > summary::after { content: "＋"; color: var(--muted); }
+details.loader[open] > summary::after { content: "−"; }
+.loadbody { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+textarea { width: 100%; min-height: 130px; resize: vertical; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); padding: 10px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+select { height: 42px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); padding: 0 10px; font: inherit; min-width: 0; flex: 1; }
+.btn { height: 44px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; font-weight: 600; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); flex: 1; }
+.btn[disabled] { opacity: .5; cursor: default; }
+.hint { font-size: 12.5px; color: var(--muted); }
+.progress { height: 8px; border-radius: 6px; background: var(--line); overflow: hidden; }
+.progress > div { height: 100%; width: 0; background: var(--accent); transition: width .2s ease; }
+.status { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.error { color: var(--c-blunder); font-size: 13.5px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+
+input[type="text"] { height: 42px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); padding: 0 12px; font: inherit; min-width: 0; flex: 2; }
+.nick { display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.gamelist { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; }
+.gitem { text-align: left; border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 9px 12px; cursor: pointer; display: flex; flex-direction: column; gap: 1px; }
+.gitem:active { transform: translateY(1px); }
+.gitem .gt { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gitem .gs { font-size: 12.5px; color: var(--muted); }
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { .evalbar .white, .progress > div { transition: none; } }
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <h1>Разбор партий</h1>
+    <div class="engine-tag" id="engineTag">Stockfish 19 · <b>готов</b></div>
+  </div>
+
+  <div class="card" id="gameCard">
+    <div class="players">
+      <div class="player"><div class="pname"><span class="dot w"></span><span id="nameW">Белые</span></div><div class="pmeta" id="metaW"></div></div>
+      <div class="result" id="result">—</div>
+      <div class="player right"><div class="pname"><span id="nameB">Чёрные</span><span class="dot b"></span></div><div class="pmeta" id="metaB"></div></div>
+    </div>
+    <div class="gmeta" id="gmeta"></div>
+  </div>
+
+  <div class="card">
+    <div class="boardrow">
+      <div class="evalbar" id="evalbar" aria-label="Шкала оценки"><div class="white" id="evalWhite"></div><div class="mid"></div><div class="num top" id="numTop"></div><div class="num bot" id="numBot"></div></div>
+      <div class="boardbox"><svg class="board" id="board" viewBox="0 0 800 800" role="img" aria-label="Шахматная доска"></svg></div>
+    </div>
+  </div>
+
+  <div class="card moveinfo" id="moveinfo"></div>
+
+  <div class="controls">
+    <button class="cbtn" id="bFirst" aria-label="В начало">⏮</button>
+    <button class="cbtn" id="bPrev" aria-label="Назад">◀</button>
+    <button class="cbtn primary" id="bPlay" aria-label="Воспроизвести">▶</button>
+    <button class="cbtn" id="bNext" aria-label="Вперёд">▶︎</button>
+    <button class="cbtn" id="bFlip" aria-label="Перевернуть доску">⇅</button>
+  </div>
+
+  <div class="card graphcard">
+    <svg class="graph" id="graph" viewBox="0 0 400 104" aria-label="График оценки позиции"></svg>
+  </div>
+
+  <div>
+    <h2 style="margin: 4px 2px 8px">Ходы</h2>
+    <div class="card movelist" id="movelist"></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-bottom: 12px">Итоги</h2>
+    <div class="sumgrid" id="summary"></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-bottom: 10px">Значки ходов</h2>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <details class="card loader" id="loader">
+    <summary>Загрузить свою партию</summary>
+    <div class="loadbody">
+      <div class="nick" id="nickBox" hidden>
+        <div class="row">
+          <select id="site" aria-label="Площадка" style="flex:1.2">
+            <option value="lichess">lichess</option>
+            <option value="chesscom">chess.com</option>
+          </select>
+          <input type="text" id="nick" placeholder="Ник игрока" autocapitalize="off" autocomplete="off" spellcheck="false">
+        </div>
+        <button class="btn" id="bFind" type="button">Найти последние партии</button>
+        <div class="status" id="nickStatus"></div>
+        <div class="gamelist" id="gamelist"></div>
+      </div>
+      <textarea id="pgn" placeholder="Вставьте PGN партии сюда" spellcheck="false"></textarea>
+      <div class="row">
+        <input type="file" id="file" accept=".pgn,.txt,text/plain" hidden>
+        <button class="btn" id="bFile" type="button">Выбрать файл .pgn</button>
+        <select id="depth" aria-label="Глубина анализа">
+          <option value="12">Быстро · глубина 12</option>
+          <option value="16" selected>Стандарт · глубина 16</option>
+          <option value="20">Глубоко · глубина 20</option>
+          <option value="24">Максимум · глубина 24</option>
+        </select>
+      </div>
+      <select id="engineSel" aria-label="Движок" hidden>
+        <option value="lite">Движок: лёгкий, быстрый старт</option>
+        <option value="full">Движок: полный Stockfish 19 (долгий старт)</option>
+      </select>
+      <div class="row">
+        <button class="btn primary" id="bGo" type="button">Разобрать партию</button>
+        <button class="btn" id="bCancel" type="button" hidden>Отмена</button>
+      </div>
+      <div class="progress" id="progress" hidden><div id="progressBar"></div></div>
+      <div class="status" id="status"></div>
+      <div class="error" id="error" hidden></div>
+      <div class="hint">PGN на chess.com: партия → «Поделиться» → вкладка PGN → «Копировать». На lichess: партия → «Скачать PGN» или «Копировать PGN». В приложении можно загрузить партию по нику.</div>
+    </div>
+  </details>
+</div>
+
+<script>/*CHESS*/</script>
+<script>/*CORE*/</script>
+<script>
+(function () {
+  'use strict';
+  var core = createCore(window.Chess);
+  var CLASSES = core.CLASSES;
+  var SAMPLE = /*SAMPLE*/null;
+  var NOTES = {
+    legendary: 'Жертва, после которой другого пути к победе почти нет.',
+    brilliant: 'Умная жертва материала, которая оказывается лучшим ходом.',
+    great: 'Единственный сильный ход в позиции.',
+    best: 'Первая линия движка.',
+    excellent: 'Почти не уступает лучшему ходу.',
+    good: 'Разумный ход, небольшая потеря оценки.',
+    book: 'Известный дебютный ход.',
+    inaccuracy: 'Позиция немного ухудшилась.',
+    mistake: 'Заметная потеря: соперник получил шанс.',
+    miss: 'Шанс использовать промах соперника упущен.',
+    blunder: 'Грубая ошибка: оценка резко упала.'
+  };
+  var ORDER = ['legendary','brilliant','great','best','excellent','good','book','inaccuracy','mistake','miss','blunder'];
+  var GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var analysis = null, cur = -1, flipped = false, playTimer = null;
+
+  /* ---------- вспомогательное ---------- */
+  function symClass(sym) { return sym.length === 3 ? ' s3' : sym.length === 2 ? ' s2' : ''; }
+  function badge(cls, size) {
+    var c = CLASSES[cls];
+    var el = document.createElement('span');
+    el.className = 'badge ' + size + ' cls-' + cls + symClass(c.sym);
+    el.textContent = c.sym;
+    el.setAttribute('aria-hidden', 'true');
+    return el;
+  }
+  function evalText(e, whiteWp) {
+    if (!e) return '0.0';
+    if (e.mate !== null && e.mate !== undefined) {
+      if (e.mate === 0) return whiteWp >= 0.5 ? '1–0' : '0–1';
+      return (e.mate > 0 ? '+' : '−') + 'M' + Math.abs(e.mate);
+    }
+    var v = (e.cp || 0) / 100;
+    return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(1);
+  }
+  function cpFromWp(wp) {
+    var w = Math.min(0.999, Math.max(0.001, wp));
+    return Math.log(w / (1 - w)) / 0.00368208;
+  }
+  function parseFen(fen) {
+    var rows = fen.split(' ')[0].split('/');
+    var grid = [];
+    rows.forEach(function (r) {
+      var line = [];
+      for (var i = 0; i < r.length; i++) {
+        var ch = r[i];
+        if (/\d/.test(ch)) { for (var k = 0; k < +ch; k++) line.push(null); }
+        else line.push(ch);
+      }
+      grid.push(line);
+    });
+    return grid;
+  }
+  function sqIndex(sq) { return { f: sq.charCodeAt(0) - 97, r: 8 - parseInt(sq[1], 10) }; }
+
+  /* ---------- доска ---------- */
+  var NS = 'http://www.w3.org/2000/svg';
+  function svgEl(name, attrs, text) {
+    var e = document.createElementNS(NS, name);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  function renderBoard() {
+    var svg = $('board');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var fen = cur < 0 ? analysis.startFen : analysis.moves[cur].fen;
+    var grid = parseFen(fen);
+    var last = cur >= 0 ? analysis.moves[cur] : null;
+    function pos(f, r) { return flipped ? { x: (7 - f) * 100, y: (7 - r) * 100 } : { x: f * 100, y: r * 100 }; }
+
+    for (var r = 0; r < 8; r++) for (var f = 0; f < 8; f++) {
+      var p = pos(f, r);
+      var dark = (f + r) % 2 === 1;
+      svg.appendChild(svgEl('rect', { x: p.x, y: p.y, width: 100, height: 100, fill: dark ? 'var(--sq-dark)' : 'var(--sq-light)' }));
+    }
+    if (last) {
+      [last.from, last.to].forEach(function (sq) {
+        var i = sqIndex(sq), p = pos(i.f, i.r);
+        svg.appendChild(svgEl('rect', { x: p.x, y: p.y, width: 100, height: 100, fill: 'var(--hl)' }));
+      });
+    }
+    // координаты
+    for (var i2 = 0; i2 < 8; i2++) {
+      var fileIdx = flipped ? 7 - i2 : i2;
+      var rankIdx = flipped ? 7 - i2 : i2;
+      var darkF = ((fileIdx + (flipped ? 0 : 7)) % 2 === 1);
+      svg.appendChild(svgEl('text', { x: i2 * 100 + 84, y: 792, class: 'coord', 'text-anchor': 'middle', fill: ((i2 + 7) % 2 === 1) ? 'var(--sq-light)' : 'var(--sq-dark)' }, 'abcdefgh'[fileIdx]));
+      svg.appendChild(svgEl('text', { x: 8, y: i2 * 100 + 22, class: 'coord', fill: (i2 % 2 === 0) ? 'var(--sq-dark)' : 'var(--sq-light)' }, String(8 - rankIdx)));
+    }
+    // фигуры
+    for (var rr = 0; rr < 8; rr++) for (var ff = 0; ff < 8; ff++) {
+      var ch = grid[rr][ff];
+      if (!ch) continue;
+      var pp = pos(ff, rr);
+      var white = ch === ch.toUpperCase();
+      var t = svgEl('text', {
+        x: pp.x + 50, y: pp.y + 76, 'text-anchor': 'middle', 'font-size': 84,
+        fill: white ? 'var(--piece-w-fill)' : 'var(--piece-b-fill)',
+        stroke: white ? 'var(--piece-w-stroke)' : 'var(--piece-b-stroke)',
+        'stroke-width': 3, 'paint-order': 'stroke fill', 'stroke-linejoin': 'round'
+      }, GLYPH[ch.toLowerCase()] + '︎');
+      svg.appendChild(t);
+    }
+    // значок качества хода
+    if (last) {
+      var di = sqIndex(last.to), dp = pos(di.f, di.r);
+      var cx = dp.x + 76, cy = dp.y + 24;
+      var defsId = 'g-' + last.cls;
+      var fill = 'var(--c-' + last.cls + ')';
+      if (last.cls === 'legendary') {
+        var defs = svgEl('defs', {});
+        var lg = svgEl('linearGradient', { id: defsId, x1: 0, y1: 0, x2: 1, y2: 1 });
+        lg.appendChild(svgEl('stop', { offset: '0%', 'stop-color': 'var(--c-legendary-a)' }));
+        lg.appendChild(svgEl('stop', { offset: '100%', 'stop-color': 'var(--c-legendary-b)' }));
+        defs.appendChild(lg); svg.appendChild(defs);
+        fill = 'url(#' + defsId + ')';
+        svg.appendChild(svgEl('circle', { cx: cx, cy: cy, r: 31, fill: 'none', stroke: 'var(--c-legendary-a)', 'stroke-width': 3, opacity: 0.6 }));
+      }
+      svg.appendChild(svgEl('circle', { cx: cx, cy: cy, r: 25, fill: fill, stroke: '#fff', 'stroke-width': 3 }));
+      var sym = CLASSES[last.cls].sym;
+      svg.appendChild(svgEl('text', {
+        x: cx, y: cy + (sym.length === 3 ? 7 : 9), 'text-anchor': 'middle',
+        'font-size': sym.length === 3 ? 21 : sym.length === 2 ? 26 : 30, 'font-weight': 800,
+        fill: last.cls === 'inaccuracy' ? '#2b2100' : '#fff', style: 'font-family: var(--font-display)'
+      }, sym));
+    }
+  }
+
+  /* ---------- шкала оценки ---------- */
+  function currentWhiteWp() { return cur < 0 ? analysis.startWp : analysis.moves[cur].whiteWp; }
+  function currentEval() {
+    if (cur < 0) return { cp: Math.round(cpFromWp(analysis.startWp)), mate: null };
+    return analysis.moves[cur].evalAfter;
+  }
+  function renderEval() {
+    var wp = currentWhiteWp();
+    var bar = $('evalbar');
+    bar.classList.toggle('flipped', flipped);
+    $('evalWhite').style.height = (wp * 100).toFixed(1) + '%';
+    var txt = evalText(currentEval(), wp);
+    var whiteAhead = wp >= 0.5;
+    // подпись у конца шкалы того, кто лучше стоит
+    var whiteEnd = flipped ? 'top' : 'bot';
+    var blackEnd = flipped ? 'bot' : 'top';
+    $('numTop').textContent = ''; $('numBot').textContent = '';
+    var el = $(whiteAhead ? (whiteEnd === 'top' ? 'numTop' : 'numBot') : (blackEnd === 'top' ? 'numTop' : 'numBot'));
+    el.textContent = txt;
+    el.className = 'num ' + (el.id === 'numTop' ? 'top' : 'bot') + (whiteAhead ? ' onwhite' : ' onblack');
+    bar.setAttribute('aria-label', 'Оценка позиции: ' + txt);
+  }
+
+  /* ---------- карточка хода ---------- */
+  function renderMoveInfo() {
+    var box = $('moveinfo');
+    box.textContent = '';
+    if (cur < 0) {
+      var d = document.createElement('div');
+      d.style.gridColumn = '1 / -1';
+      var t = document.createElement('div'); t.className = 'mi-title'; t.textContent = 'Начальная позиция';
+      var n = document.createElement('div'); n.className = 'mi-note'; n.textContent = 'Листайте ходы кнопками или проведите пальцем по графику.';
+      d.appendChild(t); d.appendChild(n); box.appendChild(d);
+      return;
+    }
+    var m = analysis.moves[cur];
+    var c = CLASSES[m.cls];
+    box.appendChild(badge(m.cls, 'lg'));
+    var d2 = document.createElement('div'); d2.style.minWidth = 0;
+    var t2 = document.createElement('div'); t2.className = 'mi-title';
+    var num = Math.floor(cur / 2) + 1;
+    var san = document.createElement('span'); san.textContent = num + (m.color === 'w' ? '. ' : '… ') + m.san + ' ';
+    var nm = document.createElement('span'); nm.className = 'txt-' + m.cls; nm.textContent = '— ' + c.name;
+    t2.appendChild(san); t2.appendChild(nm);
+    var ev = document.createElement('div'); ev.className = 'mi-eval';
+    ev.textContent = 'Оценка ' + evalText(m.evalAfter, m.whiteWp);
+    var note = document.createElement('div'); note.className = 'mi-note';
+    if (!m.isBest && m.bestSan && ORDER.indexOf(m.cls) >= 7) {
+      var b = document.createElement('b'); b.textContent = m.bestSan;
+      note.appendChild(document.createTextNode('Лучше было '));
+      note.appendChild(b);
+    } else note.textContent = NOTES[m.cls];
+    d2.appendChild(t2); d2.appendChild(ev); d2.appendChild(note);
+    box.appendChild(d2);
+  }
+
+  /* ---------- график ---------- */
+  var GW = 400, GH = 104, PAD = 6;
+  function gx(i, n) { return PAD + (GW - 2 * PAD) * (i / n); }
+  function gy(wp) { return 6 + (GH - 12) * (1 - wp); }
+  function renderGraph() {
+    var svg = $('graph');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var moves = analysis.moves, n = moves.length;
+    var pts = [analysis.startWp].concat(moves.map(function (m) { return m.whiteWp; }));
+    svg.appendChild(svgEl('rect', { x: 0, y: 0, width: GW, height: GH, rx: 8, fill: 'var(--bg)' }));
+    var line = '', area = 'M' + gx(0, n) + ',' + gy(0);
+    pts.forEach(function (wp, i) {
+      line += (i ? 'L' : 'M') + gx(i, n).toFixed(1) + ',' + gy(wp).toFixed(1);
+    });
+    area = 'M' + gx(0, n).toFixed(1) + ',' + (GH - 6) + ' ' + line.replace(/^M/, 'L') + ' L' + gx(n, n).toFixed(1) + ',' + (GH - 6) + ' Z';
+    svg.appendChild(svgEl('path', { d: area, fill: 'var(--graph-fill)' }));
+    svg.appendChild(svgEl('line', { x1: PAD, x2: GW - PAD, y1: gy(0.5), y2: gy(0.5), stroke: 'var(--line)', 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
+    svg.appendChild(svgEl('path', { d: line, fill: 'none', stroke: 'var(--graph-line)', 'stroke-width': 1.8, 'stroke-linejoin': 'round' }));
+    svg.appendChild(svgEl('text', { x: PAD + 2, y: 13 }, 'белые лучше'));
+    svg.appendChild(svgEl('text', { x: PAD + 2, y: GH - 9 }, 'чёрные лучше'));
+    var marks = { legendary: 1, brilliant: 1, great: 0, miss: 1, mistake: 1, blunder: 1 };
+    moves.forEach(function (m, i) {
+      if (!marks[m.cls]) return;
+      var col = m.cls === 'legendary' ? 'var(--c-legendary-b)' : 'var(--c-' + m.cls + ')';
+      svg.appendChild(svgEl('circle', { cx: gx(i + 1, n).toFixed(1), cy: gy(m.whiteWp).toFixed(1), r: m.cls === 'legendary' ? 5.2 : 3.6, fill: col, stroke: 'var(--surface)', 'stroke-width': 1.4 }));
+    });
+    var cx = gx(cur + 1, n);
+    svg.appendChild(svgEl('line', { id: 'gcur', x1: cx, x2: cx, y1: 3, y2: GH - 3, stroke: 'var(--ink)', 'stroke-width': 1.4, opacity: 0.75 }));
+  }
+  function moveCursor() {
+    var l = $('gcur'); if (!l) return;
+    var cx = gx(cur + 1, analysis.moves.length);
+    l.setAttribute('x1', cx); l.setAttribute('x2', cx);
+  }
+  function graphPly(ev) {
+    var svg = $('graph'), rect = svg.getBoundingClientRect();
+    var x = (ev.clientX - rect.left) / rect.width * GW;
+    var n = analysis.moves.length;
+    var i = Math.round((x - PAD) / (GW - 2 * PAD) * n);
+    return Math.max(0, Math.min(n, i)) - 1;
+  }
+
+  /* ---------- список ходов ---------- */
+  function renderMoveList() {
+    var box = $('movelist'); box.textContent = '';
+    var moves = analysis.moves;
+    for (var i = 0; i < moves.length; i += 2) {
+      var row = document.createElement('div'); row.className = 'mrow';
+      var num = document.createElement('div'); num.className = 'mnum'; num.textContent = (i / 2 + 1) + '.';
+      row.appendChild(num);
+      for (var k = 0; k < 2; k++) {
+        var m = moves[i + k];
+        if (!m) { row.appendChild(document.createElement('div')); continue; }
+        var b = document.createElement('button');
+        b.className = 'chip'; b.type = 'button'; b.dataset.ply = String(i + k);
+        b.appendChild(badge(m.cls, 'sm'));
+        var s = document.createElement('span'); s.className = 'san'; s.textContent = m.san; b.appendChild(s);
+        b.setAttribute('aria-label', m.san + ', ' + CLASSES[m.cls].name);
+        row.appendChild(b);
+      }
+      box.appendChild(row);
+    }
+  }
+  function markChip() {
+    var box = $('movelist');
+    var on = box.querySelector('.chip.on');
+    if (on) on.classList.remove('on');
+    if (cur < 0) return;
+    var chip = box.querySelector('.chip[data-ply="' + cur + '"]');
+    if (!chip) return;
+    chip.classList.add('on');
+    var top = chip.offsetTop - box.offsetTop;
+    if (top < box.scrollTop || top + chip.offsetHeight > box.scrollTop + box.clientHeight) {
+      box.scrollTop = Math.max(0, top - box.clientHeight / 2 + chip.offsetHeight / 2);
+    }
+  }
+
+  /* ---------- итоги ---------- */
+  function renderSummary() {
+    var s = core.summarize(analysis.moves);
+    var box = $('summary'); box.textContent = '';
+    [['w', 'Белые', $('nameW').textContent], ['b', 'Чёрные', $('nameB').textContent]].forEach(function (x) {
+      var col = document.createElement('div'); col.className = 'sumcol';
+      var head = document.createElement('div'); head.className = 'sumhead';
+      var nm = document.createElement('div'); nm.className = 'sumname'; nm.textContent = x[2];
+      var ac = document.createElement('div'); ac.className = 'sumacc'; ac.textContent = s[x[0]].acc.toFixed(1) + '%';
+      head.appendChild(nm); head.appendChild(ac); col.appendChild(head);
+      var list = document.createElement('div'); list.className = 'sumlist';
+      ORDER.forEach(function (c) {
+        var n = s[x[0]].counts[c]; if (!n) return;
+        var r = document.createElement('div'); r.className = 'sumrow';
+        r.appendChild(badge(c, 'sm'));
+        var l = document.createElement('span'); l.textContent = CLASSES[c].name; r.appendChild(l);
+        var cnt = document.createElement('span'); cnt.className = 'n'; cnt.textContent = n; r.appendChild(cnt);
+        list.appendChild(r);
+      });
+      col.appendChild(list); box.appendChild(col);
+    });
+    $('metaW').textContent = 'Точность ' + s.w.acc.toFixed(1) + '%';
+    $('metaB').textContent = 'Точность ' + s.b.acc.toFixed(1) + '%';
+  }
+  function renderLegend() {
+    var box = $('legend'); box.textContent = '';
+    ORDER.forEach(function (c) {
+      var sp = document.createElement('span');
+      sp.appendChild(badge(c, 'sm'));
+      sp.appendChild(document.createTextNode(CLASSES[c].name));
+      box.appendChild(sp);
+    });
+  }
+
+  /* ---------- шапка партии ---------- */
+  function renderHeader() {
+    var h = analysis.headers || {};
+    $('nameW').textContent = h.White && h.White !== '?' ? h.White : 'Белые';
+    $('nameB').textContent = h.Black && h.Black !== '?' ? h.Black : 'Чёрные';
+    $('result').textContent = h.Result && h.Result !== '*' ? h.Result.replace('1/2-1/2', '½–½').replace(/-/g, '–') : '—';
+    var parts = [];
+    if (h.Event && h.Event !== '?') parts.push(h.Event);
+    if (h.Date && h.Date.indexOf('?') < 0) parts.push(h.Date.replace(/\./g, '-'));
+    else if (h.Date && /^\d{4}/.test(h.Date)) parts.push(h.Date.slice(0, 4));
+    parts.push('глубина ' + analysis.depth);
+    $('gmeta').textContent = parts.join(' · ');
+  }
+
+  /* ---------- навигация ---------- */
+  function goTo(i, opts) {
+    var n = analysis.moves.length;
+    cur = Math.max(-1, Math.min(n - 1, i));
+    renderBoard(); renderEval(); renderMoveInfo(); moveCursor(); markChip();
+    $('bPrev').disabled = $('bFirst').disabled = cur < 0;
+    $('bNext').disabled = cur >= n - 1;
+    if (!(opts && opts.keepPlay) && playTimer) stopPlay();
+  }
+  function startPlay() {
+    if (playTimer) return;
+    if (cur >= analysis.moves.length - 1) goTo(-1, { keepPlay: true });
+    $('bPlay').textContent = '❚❚';
+    playTimer = setInterval(function () {
+      if (cur >= analysis.moves.length - 1) { stopPlay(); return; }
+      goTo(cur + 1, { keepPlay: true });
+    }, 950);
+  }
+  function stopPlay() { clearInterval(playTimer); playTimer = null; $('bPlay').textContent = '▶'; }
+
+  function show(a, startPly) {
+    analysis = a;
+    renderHeader(); renderSummary(); renderMoveList(); renderGraph();
+    goTo(startPly === undefined ? -1 : startPly);
+  }
+
+  /* ---------- движок ---------- */
+  var session = null, worker = null, engineLabel = '';
+  var ENGINE_LITE = { file: 'stockfish-19-lite-single.js', label: 'WASM · NNUE', wait: 9000 };
+  var ENGINE_FULL = { file: 'stockfish-19-single.js', label: 'полный · NNUE', wait: 90000 };
+  var ENGINE_ASM = { file: 'stockfish-19-asm.js', label: 'asm.js · резервный', wait: 40000 };
+  var engineKey = 'lite';
+  function engineList() { return engineKey === 'full' ? [ENGINE_FULL, ENGINE_LITE, ENGINE_ASM] : [ENGINE_LITE, ENGINE_ASM]; }
+  function setEngineTag(html) { $('engineTag').innerHTML = html; }
+  function startEngine() {
+    var want = $('engineSel').hidden ? 'lite' : $('engineSel').value;
+    if (session && want === engineKey) return Promise.resolve();
+    if (session) { try { worker.terminate(); } catch (x) {} session = null; worker = null; }
+    engineKey = want;
+    var ENGINES = engineList();
+    var i = 0;
+    function attempt() {
+      if (i >= ENGINES.length) return Promise.reject(new Error('Не удалось запустить движок в этом окне.'));
+      var cfg = ENGINES[i++];
+      setEngineTag('Stockfish 19 · <b>запуск…</b>');
+      return new Promise(function (resolve, reject) {
+        var w;
+        try { w = new Worker(cfg.file); } catch (e) { reject(e); return; }
+        var s = new core.UciSession(function (c) { w.postMessage(c); });
+        w.onmessage = function (e) { s.feed(typeof e.data === 'string' ? e.data : String(e.data)); };
+        w.onerror = function (e) { reject(new Error('worker')); };
+        s.init(cfg.wait).then(function () { worker = w; session = s; engineLabel = cfg.label; resolve(); }, function (err) { try { w.terminate(); } catch (x) {} reject(err); });
+      }).then(function () {
+        setEngineTag('Stockfish 19 · <b>' + engineLabel + '</b>');
+      }, function () { return attempt(); });
+    }
+    return attempt();
+  }
+
+  /* ---------- запуск разбора ---------- */
+  var running = false, cancelled = false;
+  function setRunning(v) {
+    running = v;
+    $('bGo').disabled = v;
+    $('bCancel').hidden = !v;
+    $('progress').hidden = !v;
+    $('pgn').disabled = v; $('depth').disabled = v;
+  }
+  function showError(msg) { var e = $('error'); e.textContent = msg; e.hidden = !msg; }
+  async function runAnalysis() {
+    var pgn = $('pgn').value.trim();
+    showError('');
+    if (!pgn) { showError('Вставьте PGN партии или выберите файл.'); return; }
+    try { core.parseGame(pgn); } catch (e) { showError('PGN не читается: ' + (e && e.message ? e.message : 'неверный формат') + '.'); return; }
+    setRunning(true); cancelled = false;
+    $('status').textContent = 'Запускаю движок…';
+    try {
+      await startEngine();
+      var depth = +$('depth').value;
+      var t0 = Date.now();
+      var result = await core.analyzeGame(pgn, session, { depth: depth }, function (i, n) {
+        $('progressBar').style.width = (i / n * 100).toFixed(0) + '%';
+        var el = (Date.now() - t0) / 1000;
+        var eta = i > 1 ? Math.max(0, Math.round(el / i * (n - i))) : null;
+        $('status').textContent = 'Позиция ' + i + ' из ' + n + (eta !== null ? ' · осталось ~' + eta + ' с' : '');
+        if (cancelled) throw new Error('cancel');
+      });
+      show(result, -1);
+      $('status').textContent = 'Готово за ' + Math.round((Date.now() - t0) / 1000) + ' с · глубина ' + depth;
+      $('loader').open = false;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      if (e && e.message === 'cancel') {
+        $('status').textContent = 'Разбор остановлен.';
+        try { session.stop(); } catch (x) {}
+        // дождаться конца текущего поиска и сбросить сессию
+        try { worker.terminate(); } catch (x) {}
+        session = null; worker = null;
+      } else {
+        showError(e && e.message ? e.message : 'Не получилось разобрать партию.');
+        $('status').textContent = '';
+      }
+    } finally { setRunning(false); }
+  }
+
+  /* ---------- события ---------- */
+  $('bFirst').onclick = function () { goTo(-1); };
+  $('bPrev').onclick = function () { goTo(cur - 1); };
+  $('bNext').onclick = function () { goTo(cur + 1); };
+  $('bPlay').onclick = function () { playTimer ? stopPlay() : startPlay(); };
+  $('bFlip').onclick = function () { flipped = !flipped; renderBoard(); renderEval(); };
+  $('movelist').addEventListener('click', function (e) {
+    var b = e.target.closest('.chip'); if (b) goTo(+b.dataset.ply);
+  });
+  var scrub = false;
+  var g = $('graph');
+  g.addEventListener('pointerdown', function (e) { scrub = true; try { g.setPointerCapture(e.pointerId); } catch (x) {} goTo(graphPly(e)); });
+  g.addEventListener('pointermove', function (e) { if (scrub) goTo(graphPly(e)); });
+  g.addEventListener('pointerup', function () { scrub = false; });
+  g.addEventListener('pointercancel', function () { scrub = false; });
+  document.addEventListener('keydown', function (e) {
+    if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+    if (e.key === 'ArrowRight') { goTo(cur + 1); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft') { goTo(cur - 1); e.preventDefault(); }
+    else if (e.key === 'Home') goTo(-1);
+    else if (e.key === 'End') goTo(analysis.moves.length - 1);
+  });
+  $('bFile').onclick = function () { $('file').click(); };
+  $('file').onchange = function () {
+    var f = this.files && this.files[0]; if (!f) return;
+    var r = new FileReader();
+    r.onload = function () { $('pgn').value = String(r.result || ''); showError(''); };
+    r.readAsText(f);
+  };
+  $('bGo').onclick = runAnalysis;
+  $('bCancel').onclick = function () { cancelled = true; };
+
+
+  /* ---------- загрузка по нику (только в приложении) ---------- */
+  var isApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  function httpGet(url, accept) {
+    var cap = window.Capacitor;
+    if (cap && cap.Plugins && cap.Plugins.CapacitorHttp) {
+      return cap.Plugins.CapacitorHttp.request({ url: url, method: 'GET', headers: { Accept: accept || '*/*' } }).then(function (r) {
+        if (r.status >= 400) { var e = new Error('http ' + r.status); e.status = r.status; throw e; }
+        return r.data;
+      });
+    }
+    return fetch(url, { headers: { Accept: accept || '*/*' } }).then(function (r) {
+      if (!r.ok) { var e = new Error('http ' + r.status); e.status = r.status; throw e; }
+      return (accept && accept.indexOf('json') >= 0) ? r.json() : r.text();
+    });
+  }
+  function hdr(pgn, name) { var m = pgn.match(new RegExp('\\[' + name + ' "([^"]*)"\\]')); return m ? m[1] : ''; }
+  function splitPgns(text) {
+    return String(text).split(/\n\s*\n(?=\[Event )/).map(function (x) { return x.trim(); }).filter(function (x) { return x.indexOf('[Event') === 0; });
+  }
+  async function fetchLichess(nick) {
+    var url = 'https://lichess.org/api/games/user/' + encodeURIComponent(nick) + '?max=15&clocks=false&evals=false&opening=false';
+    var txt = await httpGet(url, 'application/x-chess-pgn');
+    return splitPgns(typeof txt === 'string' ? txt : '');
+  }
+  async function fetchChessCom(nick) {
+    var base = 'https://api.chess.com/pub/player/' + encodeURIComponent(nick.toLowerCase());
+    var arch = await httpGet(base + '/games/archives', 'application/json');
+    if (typeof arch === 'string') arch = JSON.parse(arch);
+    var list = (arch && arch.archives) || [];
+    var out = [];
+    for (var k = list.length - 1; k >= 0 && out.length < 15 && k >= list.length - 3; k--) {
+      var month = await httpGet(list[k], 'application/json');
+      if (typeof month === 'string') month = JSON.parse(month);
+      var games = ((month && month.games) || []).slice().reverse();
+      games.forEach(function (g) { if (g.pgn) out.push(g.pgn); });
+    }
+    return out.slice(0, 15);
+  }
+  function gameLabel(pgn) {
+    var res = hdr(pgn, 'Result').replace('1/2-1/2', '½–½');
+    var date = hdr(pgn, 'Date').replace(/\./g, '-');
+    var tc = hdr(pgn, 'TimeControl');
+    var parts = [res, date, tc && tc !== '-' ? tc : ''].filter(Boolean);
+    return { title: (hdr(pgn, 'White') || '?') + ' — ' + (hdr(pgn, 'Black') || '?'), sub: parts.join(' · ') };
+  }
+  async function findGames() {
+    var nick = $('nick').value.trim();
+    var box = $('gamelist'); box.textContent = '';
+    if (!nick) { $('nickStatus').textContent = 'Введите ник.'; return; }
+    try { localStorage.setItem('chessreview.nick', nick); localStorage.setItem('chessreview.site', $('site').value); } catch (x) {}
+    $('bFind').disabled = true;
+    $('nickStatus').textContent = 'Ищу партии…';
+    try {
+      var pgns = $('site').value === 'lichess' ? await fetchLichess(nick) : await fetchChessCom(nick);
+      if (!pgns.length) { $('nickStatus').textContent = 'Партии не найдены. Проверьте ник и площадку.'; return; }
+      $('nickStatus').textContent = 'Нажмите на партию, чтобы разобрать её.';
+      pgns.forEach(function (pgn) {
+        var l = gameLabel(pgn);
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'gitem';
+        var t = document.createElement('span'); t.className = 'gt'; t.textContent = l.title;
+        var sub = document.createElement('span'); sub.className = 'gs'; sub.textContent = l.sub;
+        b.appendChild(t); b.appendChild(sub);
+        b.onclick = function () { $('pgn').value = pgn; showError(''); runAnalysis(); };
+        box.appendChild(b);
+      });
+    } catch (e) {
+      $('nickStatus').textContent = (e && e.status === 404) ? 'Игрок не найден.' : 'Не удалось загрузить партии. Проверьте интернет и ник.';
+    } finally { $('bFind').disabled = false; }
+  }
+  if (isApp) {
+    $('nickBox').hidden = false;
+    $('engineSel').hidden = false;
+    $('loader').open = true;
+    try {
+      var n0 = localStorage.getItem('chessreview.nick'); if (n0) $('nick').value = n0;
+      var s0 = localStorage.getItem('chessreview.site'); if (s0) $('site').value = s0;
+    } catch (x) {}
+    $('bFind').onclick = findGames;
+    $('nick').addEventListener('keydown', function (e) { if (e.key === 'Enter') findGames(); });
+  }
+
+  /* ---------- старт: пример партии ---------- */
+  renderLegend();
+  if (SAMPLE) {
+    $('pgn').value = SAMPLE.pgn || '';
+    show(SAMPLE.analysis, SAMPLE.analysis.moves.length > 30 ? 30 : -1);
+    $('status').textContent = 'Показан пример: «Партия в опере», Морфи, 1858. Свою партию загрузите ниже.';
+  }
+})();
+</script>
