@@ -1,0 +1,1396 @@
+<meta charset="utf-8">
+<title>Разбор партий</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+/* Liquid Glass по референсам ColorOS 17 и iOS 26.
+   Нейтральный графитовый фон без цвета. Плашки светлее фона: ровное матовое полупрозрачное стекло
+   с тонкой кромкой по контуру, чуть ярче сверху и снизу. Цвет только у активных элементов (синий).
+   Нижний плеер: капсула с подписями и два отдельных круга по бокам. */
+:root {
+  --bg: #1a1a1c;
+  --ink: #f3f4f6;
+  --muted: #a8abb3;
+  --accent: #2f6fe0;
+  --accent-ink: #ffffff;
+  --glass: rgba(255, 255, 255, 0.12);
+  --field: rgba(255, 255, 255, 0.09);
+  --line: rgba(255, 255, 255, 0.14);
+  --rim:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 0 rgba(255, 255, 255, 0.14),
+    inset 0 0 18px 0 rgba(255, 255, 255, 0.035);
+  --sq-light: #dee3e6;
+  --sq-dark: #6b84a8;
+  --hl: rgba(255, 208, 40, 0.55);
+  --bar-white: #f3f5f9;
+  --bar-black: #1b1d22;
+  --graph-line: #6ea0ff;
+  --pw-a: #ffffff;
+  --pw-b: #d3deef;
+  --pw-stroke: #1b2535;
+  --pb-a: #46536a;
+  --pb-b: #121a27;
+  --pb-stroke: #eaf0f9;
+  --c-legendary-a: #ffb800;
+  --c-legendary-b: #f0289a;
+  --c-brilliant: #12b8a6;
+  --c-great: #3b8cf0;
+  --c-best: #4faa2a;
+  --c-excellent: #7bb73a;
+  --c-good: #62a393;
+  --c-book: #a98458;
+  --c-inaccuracy: #f1bb1c;
+  --c-mistake: #f28a24;
+  --c-miss: #e8527f;
+  --c-blunder: #e23a3a;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-display: var(--font-body);
+  --font-chess: "Noto Sans Symbols 2", "Segoe UI Symbol", "DejaVu Sans", "Apple Symbols", sans-serif;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  padding-block: 12px 118px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+h1, h2 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+h1 { font-size: 21px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; white-space: nowrap; }
+h2 { font-size: 12.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
+button:focus-visible, summary:focus-visible, textarea:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* Матовое стекло: светлее фона, ровная заливка, кромка по контуру */
+.liquid-glass {
+  position: relative;
+  background: var(--glass);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--rim), 0 8px 24px -8px rgba(0, 0, 0, 0.35);
+}
+/* зеркальная кромка: ярче на верхней и нижней дуге, тоньше по бокам */
+.liquid-glass::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.1) 24%, rgba(255, 255, 255, 0.1) 76%, rgba(255, 255, 255, 0.34));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+.card { padding: 16px; }
+
+/* Верхний бар: плавающая капсула */
+.top {
+  position: sticky; z-index: 40;
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 10px 9px 22px; border-radius: 999px;
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+
+/* Плоские матовые капсулы и кнопки из того же материала */
+.engine-tag, .btn, .result, .mi-eval, .gitem {
+  background: var(--field);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24), inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+}
+.engine-tag {
+  display: inline-flex; align-items: center; gap: 7px; flex: none;
+  padding: 8px 14px; border-radius: 999px; font-size: 12px; color: var(--muted); white-space: nowrap;
+}
+.engine-tag::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #34d27a; }
+.engine-tag b { color: var(--ink); font-weight: 700; }
+
+.players { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: center; }
+.player { min-width: 0; }
+.player.right { text-align: right; }
+.pname { font-weight: 700; font-size: 16px; line-height: 1.2; display: flex; align-items: flex-start; gap: 8px; }
+.player.right .pname { justify-content: flex-end; }
+.pname .nm { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; min-width: 0; overflow-wrap: anywhere; }
+.dot { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.85); flex: none; margin-top: 3px; }
+.dot.w { background: #fff; } .dot.b { background: #0c1119; }
+.pmeta { font-size: 12.5px; color: var(--muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
+.result { font-weight: 700; color: var(--ink); font-size: 14px; padding: 6px 14px; border-radius: 999px; white-space: nowrap; }
+.gmeta { margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+
+/* доска: плотная, контрастная, стеклянная только рамка */
+.board-card { padding: 10px; }
+.boardrow { display: flex; gap: 10px; align-items: stretch; }
+.evalbar { width: 26px; border-radius: 999px; overflow: hidden; position: relative; background: var(--bar-black); flex: none;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.16); }
+.evalbar .white { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(180deg, var(--bar-white), #c4cad6); transition: height .4s cubic-bezier(.3, .8, .3, 1); }
+.evalbar.flipped .white { bottom: auto; top: 0; }
+.evalbar .mid { position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(160, 175, 200, .6); }
+.evalbar .num { position: absolute; left: 0; right: 0; text-align: center; font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
+.evalbar .num.top { top: 6px; } .evalbar .num.bot { bottom: 6px; }
+.evalbar .num.onwhite { color: #1b2430; } .evalbar .num.onblack { color: #eef2f7; }
+.boardbox { flex: 1; min-width: 0; }
+.board { display: block; width: 100%; height: auto; border-radius: 18px; touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  box-shadow: 0 10px 24px -8px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.12); }
+.board .coord { font-family: var(--font-body); font-size: 17px; font-weight: 700; }
+.board .pieces { filter: drop-shadow(0 3px 2px rgba(0, 0, 0, 0.45)); }
+
+/* карточка хода */
+.moveinfo { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; min-height: 84px; }
+.mi-title { font-size: 19px; font-weight: 800; line-height: 1.2; letter-spacing: -0.02em; }
+.mi-eval { display: inline-flex; margin-top: 6px; padding: 3px 12px; border-radius: 999px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); font-size: 13px; }
+.mi-note { font-size: 13.5px; color: var(--muted); margin-top: 6px; }
+.mi-note b { color: var(--ink); font-weight: 700; }
+
+/* значки ходов: плоские цветные круги */
+.badge {
+  display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; color: #fff; flex: none; line-height: 1;
+  font-family: var(--font-display); font-weight: 800;
+  background: var(--cbg, #888);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 -2px 3px rgba(0, 0, 0, 0.18), 0 3px 8px -2px rgba(0, 0, 0, 0.5);
+}
+.badge.lg { width: 52px; height: 52px; font-size: 22px; }
+.badge.sm { width: 18px; height: 18px; font-size: 10px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+.badge.lg.s3 { font-size: 17px; } .badge.sm.s3 { font-size: 7.5px; letter-spacing: -0.5px; }
+.badge.lg.s2 { font-size: 20px; } .badge.sm.s2 { font-size: 9px; }
+.cls-legendary { --cbg: linear-gradient(135deg, var(--c-legendary-a), var(--c-legendary-b)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 0 2px rgba(255, 184, 0, 0.4), 0 6px 16px -2px rgba(240, 40, 154, 0.45); }
+.badge.sm.cls-legendary { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 0 1.5px rgba(255, 184, 0, 0.45); }
+.cls-brilliant { --cbg: var(--c-brilliant); }
+.cls-great { --cbg: var(--c-great); }
+.cls-best { --cbg: var(--c-best); }
+.cls-excellent { --cbg: var(--c-excellent); }
+.cls-good { --cbg: var(--c-good); }
+.cls-book { --cbg: var(--c-book); }
+.cls-inaccuracy { --cbg: var(--c-inaccuracy); color: #2b2100; }
+.cls-mistake { --cbg: var(--c-mistake); }
+.cls-miss { --cbg: var(--c-miss); }
+.cls-blunder { --cbg: var(--c-blunder); }
+.txt-legendary { background: linear-gradient(90deg, #ffd45a, #ffa0d2); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.txt-brilliant { color: #2fd3bf; } .txt-great { color: #6aa8ff; } .txt-best { color: #7ad14e; }
+.txt-excellent { color: #a0d95a; } .txt-good { color: #86c7b6; } .txt-book { color: #d3aa7c; }
+.txt-inaccuracy { color: var(--c-inaccuracy); } .txt-mistake { color: var(--c-mistake); }
+.txt-miss { color: #ff7aa2; } .txt-blunder { color: #ff6464; }
+
+/* плеер: капсула с подписями и два отдельных круга */
+.dock {
+  position: fixed; z-index: 30; left: 50%; transform: translateX(-50%);
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  width: min(404px, calc(100% - 32px));
+  display: flex; align-items: center; gap: 8px;
+}
+.circle { flex: none; width: 62px; height: 62px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.08); display: grid; place-items: center; cursor: pointer; color: var(--ink); transition: transform .12s ease; }
+.circle.play { background: var(--accent); color: var(--accent-ink); border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), inset 0 -1px 0 rgba(0, 0, 0, 0.2), 0 8px 20px -6px rgba(47, 111, 224, 0.6); }
+.circle.play::after { opacity: 0.5; }
+.capsule { flex: 1; min-width: 0; height: 62px; padding: 0 6px; border-radius: 999px; display: flex; align-items: stretch; }
+.tab { flex: 1; min-width: 0; margin: 5px 0; border: 0; border-radius: 999px; background: transparent; cursor: pointer; color: var(--ink);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; font-weight: 600; transition: background-color .12s ease; }
+.tab span { white-space: nowrap; }
+.circle svg, .tab svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.circle svg { width: 24px; height: 24px; }
+.tab:active { background: rgba(255, 255, 255, 0.14); }
+.circle:active { transform: scale(0.93); }
+.tab[disabled] { opacity: .35; cursor: default; }
+
+/* график */
+.graphcard { padding: 12px 12px 10px; }
+.graph { display: block; width: 100%; height: auto; touch-action: none; cursor: pointer; }
+.graph text { font-family: var(--font-body); font-size: 9px; font-weight: 600; fill: var(--muted); }
+
+/* список ходов */
+.movelist { max-height: 244px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 8px; }
+.mrow { display: grid; grid-template-columns: 30px 1fr 1fr; gap: 4px; align-items: center; }
+.mnum { color: var(--muted); font-size: 12.5px; text-align: right; padding-right: 4px; font-variant-numeric: tabular-nums; }
+.chip { display: flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 999px; border: 0; background: transparent; cursor: pointer; text-align: left; font-weight: 600; min-height: 36px; }
+.chip:hover { background: var(--field); }
+.chip.on { background: var(--accent); color: var(--accent-ink); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 0 rgba(0, 0, 0, 0.18); }
+.chip .san { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* итоги */
+.sumgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.sumcol { min-width: 0; }
+.sumhead { display: flex; flex-direction: column; margin-bottom: 12px; }
+.sumname { font-weight: 600; font-size: 13px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sumacc { font-weight: 800; font-size: 32px; letter-spacing: -0.03em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.sumlist { display: flex; flex-direction: column; gap: 6px; }
+.sumrow { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.sumrow .n { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* загрузка */
+details.loader { padding: 0; }
+details.loader > summary { list-style: none; cursor: pointer; padding: 18px; font-weight: 700; font-size: 16px; display: flex; align-items: center; justify-content: space-between; }
+details.loader > summary::-webkit-details-marker { display: none; }
+details.loader > summary::after { content: ""; width: 9px; height: 9px; border-right: 2.5px solid var(--ink); border-bottom: 2.5px solid var(--ink); transform: rotate(45deg) translate(-2px, -2px); transition: transform .2s ease; }
+details.loader[open] > summary::after { transform: rotate(-135deg) translate(-2px, -2px); }
+.loadbody { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+textarea, input[type="text"], select {
+  border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(0, 0, 0, 0.2); color: var(--ink); font: inherit;
+  box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.3), inset 0 -1px 0 0 rgba(255, 255, 255, 0.1);
+}
+textarea { width: 100%; min-height: 130px; resize: vertical; padding: 14px 16px; border-radius: 22px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; }
+input[type="text"] { height: 46px; padding: 0 18px; min-width: 0; flex: 2; border-radius: 999px; }
+input::placeholder, textarea::placeholder { color: rgba(200, 205, 215, 0.55); }
+select { height: 46px; padding: 0 38px 0 18px; min-width: 0; flex: 1; width: 100%; border-radius: 999px; -webkit-appearance: none; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23d5deef' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 16px center; }
+select option { color: #0e1626; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.btn { height: 46px; padding: 0 20px; border-radius: 999px; cursor: pointer; font-weight: 700; transition: transform .12s ease; color: var(--ink); }
+.btn:active { transform: scale(0.97); }
+.btn.primary { flex: 1; background: var(--accent); color: var(--accent-ink); border-color: rgba(255, 255, 255, 0.16); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 0 rgba(0, 0, 0, 0.2); }
+.btn[disabled] { opacity: .5; cursor: default; }
+.nick { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
+.gamelist { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; }
+.gitem { text-align: left; border-radius: 22px; padding: 11px 16px; cursor: pointer; display: flex; flex-direction: column; gap: 1px; color: var(--ink); }
+.gitem:active { transform: scale(0.99); }
+.gitem .gt { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gitem .gs { font-size: 12.5px; color: var(--muted); }
+.hint { font-size: 12.5px; color: var(--muted); }
+.progress { height: 8px; border-radius: 999px; background: rgba(0, 0, 0, 0.3); overflow: hidden; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5); }
+.progress > div { height: 100%; width: 0; background: var(--accent); border-radius: 999px; transition: width .2s ease; }
+.status { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.error { color: #ff8a8a; font-size: 13.5px; font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); font-weight: 500; }
+
+/* свои ходы */
+.board { cursor: pointer; }
+.varbar { display: flex; align-items: center; gap: 8px; padding: 9px 12px 9px 16px; border-radius: 26px; font-size: 13px; color: var(--muted); min-height: 52px; }
+.varbar .vlabel { font-weight: 700; color: var(--ink); white-space: nowrap; }
+.varbar .vlist { display: flex; gap: 2px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; }
+.varbar .vlist::-webkit-scrollbar { display: none; }
+.varbar .vlist .chip { flex: none; padding: 5px 10px; min-height: 34px; }
+.varbar .vback { flex: none; height: 36px; padding: 0 16px; border: 0; border-radius: 999px; cursor: pointer; font-weight: 700; background: var(--accent); color: var(--accent-ink); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 0 rgba(0, 0, 0, 0.18); }
+.mi-btn { margin-top: 10px; height: 34px; padding: 0 16px; border: 0; border-radius: 999px; cursor: pointer; font-weight: 700; font-size: 13px; color: var(--ink); background: var(--field); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2); }
+.mi-btn:active { transform: scale(0.97); }
+
+/* подсказки и редактор */
+.toolrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 26px; }
+.tbtn { height: 38px; padding: 0 15px; border: 0; border-radius: 999px; cursor: pointer; font-weight: 700; font-size: 13px; color: var(--ink); background: var(--field); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2); }
+.tbtn:active { transform: scale(0.97); }
+.tbtn.on { background: var(--accent); color: var(--accent-ink); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 0 rgba(0, 0, 0, 0.18); }
+.tbtn[disabled] { opacity: .4; }
+.hinttext { flex-basis: 100%; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; color: var(--muted); padding: 2px 6px 2px; }
+.hinttext:empty { display: none; }
+.hinttext b { color: var(--ink); }
+.hd { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; background: #5fb336; }
+.hd.o { background: #3f8cff; }
+.editor { display: flex; flex-direction: column; gap: 10px; }
+.edpal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.pbtn { min-width: 0; overflow: hidden; aspect-ratio: 1; border: 0; border-radius: 14px; cursor: pointer; background: var(--field); color: var(--ink); display: flex; align-items: center; justify-content: center; padding: 3px; font-weight: 700; font-size: 10px; }
+.pbtn.light { background: #dee3e6; }
+.pbtn.on { outline: 3px solid var(--accent); outline-offset: -1px; }
+.pbtn svg { width: 100%; height: 100%; }
+.edrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.edrow:empty { display: none; }
+.edstatus { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.edstatus.err { color: #ff8a8a; font-weight: 600; }
+.edlines { display: flex; flex-direction: column; gap: 6px; }
+.edline { display: flex; gap: 10px; align-items: baseline; font-size: 13.5px; }
+.edline .ev { flex: none; min-width: 52px; padding: 2px 10px; border-radius: 999px; background: var(--field); font-weight: 800; font-variant-numeric: tabular-nums; text-align: center; }
+.edline .pv { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.editing #moveinfo, .editing #varbar { display: none; }
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { .evalbar .white, .progress > div, .circle, .tab, .btn, details.loader > summary::after { transition: none; } }
+</style>
+
+<div class="wrap">
+
+  <div class="top liquid-glass">
+    <h1>Разбор партий</h1>
+    <div class="engine-tag" id="engineTag">Stockfish 19 · <b>готов</b></div>
+  </div>
+
+  <div class="liquid-glass card" id="gameCard">
+    <div class="players">
+      <div class="player"><div class="pname"><span class="dot w"></span><span class="nm" id="nameW">Белые</span></div><div class="pmeta" id="metaW"></div></div>
+      <div class="result" id="result">—</div>
+      <div class="player right"><div class="pname"><span class="nm" id="nameB">Чёрные</span><span class="dot b"></span></div><div class="pmeta" id="metaB"></div></div>
+    </div>
+    <div class="gmeta" id="gmeta"></div>
+  </div>
+
+  <div class="liquid-glass card board-card">
+    <div class="boardrow">
+      <div class="evalbar" id="evalbar" aria-label="Шкала оценки"><div class="white" id="evalWhite"></div><div class="mid"></div><div class="num top" id="numTop"></div><div class="num bot" id="numBot"></div></div>
+      <div class="boardbox"><svg class="board" id="board" viewBox="0 0 800 800" role="img" aria-label="Шахматная доска"></svg></div>
+    </div>
+  </div>
+
+  <div class="liquid-glass toolrow" id="toolrow">
+    <button class="tbtn" id="bHint" type="button">Лучшие ходы</button>
+    <button class="tbtn" id="bEdit" type="button">Редактор доски</button>
+    <div class="hinttext" id="hintText"></div>
+  </div>
+
+  <div class="liquid-glass card editor" id="editor" hidden>
+    <div class="edpal" id="edPal"></div>
+    <div class="edrow">
+      <button class="tbtn" id="edTurn" type="button">Ход белых</button>
+      <button class="tbtn" id="edClear" type="button">Очистить</button>
+      <button class="tbtn" id="edStart" type="button">Начальная</button>
+      <button class="tbtn" id="edCur" type="button">Как в партии</button>
+    </div>
+    <div class="edrow" id="edCast"></div>
+    <div class="edstatus" id="edStatus"></div>
+    <div class="edlines" id="edLines"></div>
+    <div class="hint">Выберите фигуру и коснитесь клетки. «Рука» — коснитесь фигуры, чтобы поднять её, и клетки, чтобы поставить. Анализ идёт сам и обновляется после каждой правки.</div>
+  </div>
+
+  <div class="liquid-glass varbar" id="varbar"></div>
+  <div class="liquid-glass card moveinfo" id="moveinfo"></div>
+
+  <div class="liquid-glass card graphcard">
+    <svg class="graph" id="graph" viewBox="0 0 400 120" aria-label="График оценки позиции"></svg>
+  </div>
+
+  <div>
+    <h2 style="margin: 4px 6px 10px">Ходы</h2>
+    <div class="liquid-glass card movelist" id="movelist"></div>
+  </div>
+
+  <div class="liquid-glass card">
+    <h2 style="margin-bottom: 14px">Итоги</h2>
+    <div class="sumgrid" id="summary"></div>
+  </div>
+
+  <div class="liquid-glass card">
+    <h2 style="margin-bottom: 12px">Значки ходов</h2>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <details class="liquid-glass card loader" id="loader">
+    <summary>Загрузить свою партию</summary>
+    <div class="loadbody">
+      <div class="nick" id="nickBox" hidden>
+        <div class="row">
+          <select id="site" aria-label="Площадка" style="flex:1.2">
+            <option value="lichess">lichess</option>
+            <option value="chesscom">chess.com</option>
+          </select>
+          <input type="text" id="nick" placeholder="Ник игрока" autocapitalize="off" autocomplete="off" spellcheck="false">
+        </div>
+        <button class="btn" id="bFind" type="button">Найти последние партии</button>
+        <div class="status" id="nickStatus"></div>
+        <div class="gamelist" id="gamelist"></div>
+      </div>
+      <textarea id="pgn" placeholder="Вставьте PGN партии сюда" spellcheck="false"></textarea>
+      <div class="row">
+        <input type="file" id="file" accept=".pgn,.txt,text/plain" hidden>
+        <button class="btn" id="bFile" type="button">Выбрать файл .pgn</button>
+        <select id="depth" aria-label="Глубина анализа">
+          <option value="12">Очень быстро · глубина 12</option>
+          <option value="14" selected>Быстро · глубина 14</option>
+          <option value="18">Глубоко · глубина 18</option>
+          <option value="22">Максимум · глубина 22</option>
+        </select>
+      </div>
+      <select id="engineSel" aria-label="Движок" hidden>
+        <option value="lite">Движок: лёгкий, быстрый старт</option>
+        <option value="full">Движок: полный Stockfish 19 (долгий старт)</option>
+      </select>
+      <div class="row">
+        <button class="btn primary" id="bGo" type="button">Разобрать партию</button>
+        <button class="btn" id="bCancel" type="button" hidden>Отмена</button>
+      </div>
+      <div class="progress" id="progress" hidden><div id="progressBar"></div></div>
+      <div class="status" id="status"></div>
+      <div class="error" id="error" hidden></div>
+      <div class="hint">PGN на chess.com: партия → «Поделиться» → вкладка PGN → «Копировать». На lichess: партия → «Скачать PGN» или «Копировать PGN». В приложении можно загрузить партию по нику.</div>
+    </div>
+  </details>
+
+  <nav class="dock" aria-label="Навигация по ходам">
+    <button class="circle liquid-glass" id="bFlip" aria-label="Перевернуть доску"><svg viewBox="0 0 24 24"><path d="M8 4v14M4.5 14.5L8 18l3.5-3.5M16 20V6M12.5 9.5L16 6l3.5 3.5"/></svg></button>
+    <div class="capsule liquid-glass">
+      <button class="tab" id="bFirst" aria-label="В начало"><svg viewBox="0 0 24 24"><path d="M6 5v14"/><path d="M19 6l-9 6 9 6z"/></svg><span>В начало</span></button>
+      <button class="tab" id="bPrev" aria-label="Назад"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><span>Назад</span></button>
+      <button class="tab" id="bNext" aria-label="Вперёд"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg><span>Вперёд</span></button>
+    </div>
+    <button class="circle play liquid-glass" id="bPlay" aria-label="Воспроизвести"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg></button>
+  </nav>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="pc-wK" viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path stroke-linejoin="miter" d="M22.5 11.63V6M20 8h5"/><path fill="#fff" stroke-linecap="butt" stroke-linejoin="miter" d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5"/><path fill="#fff" d="M11.5 37c5.5 3.5 15.5 3.5 21 0v-7s9-4.5 6-10.5c-4-6.5-13.5-3.5-16 4V27v-3.5c-3.5-7.5-13-10.5-16-4-3 6 5 10 5 10z"/><path d="M11.5 30c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0"/></g></symbol><symbol id="pc-wQ" viewBox="0 0 45 45"><g fill="#fff" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M8 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0m16.5-4.5a2 2 0 1 1-4 0 2 2 0 1 1 4 0M41 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0M16 8.5a2 2 0 1 1-4 0 2 2 0 1 1 4 0M33 9a2 2 0 1 1-4 0 2 2 0 1 1 4 0"/><path stroke-linecap="butt" d="M9 26c8.5-1.5 21-1.5 27 0l2-12-7 11V11l-5.5 13.5-3-15-3 15-5.5-14V25L7 14z"/><path stroke-linecap="butt" d="M9 26c0 2 1.5 2 2.5 4 1 1.5 1 1 .5 3.5-1.5 1-1.5 2.5-1.5 2.5-1.5 1.5.5 2.5.5 2.5 6.5 1 16.5 1 23 0 0 0 1.5-1 0-2.5 0 0 .5-1.5-1-2.5-.5-2.5-.5-2 .5-3.5 1-2 2.5-2 2.5-4-8.5-1.5-18.5-1.5-27 0z"/><path fill="none" d="M11.5 30c3.5-1 18.5-1 22 0M12 33.5c6-1 15-1 21 0"/></g></symbol><symbol id="pc-wR" viewBox="0 0 45 45"><g fill="#fff" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path stroke-linecap="butt" d="M9 39h27v-3H9zm3-3v-4h21v4zm-1-22V9h4v2h5V9h5v2h5V9h4v5"/><path d="m34 14-3 3H14l-3-3"/><path stroke-linecap="butt" stroke-linejoin="miter" d="M31 17v12.5H14V17"/><path d="m31 29.5 1.5 2.5h-20l1.5-2.5"/><path fill="none" stroke-linejoin="miter" d="M11 14h23"/></g></symbol><symbol id="pc-wB" viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><g fill="#fff" stroke-linecap="butt"><path d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2 0 0 1.65.54 3 2-.68.97-1.65.99-3 .5-3.39-.97-10.11.46-13.5-1-3.39 1.46-10.11.03-13.5 1-1.35.49-2.32.47-3-.5 1.35-1.94 3-2 3-2z"/><path d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/><path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z"/></g><path stroke-linejoin="miter" d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5"/></g></symbol><symbol id="pc-wN" viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path fill="#fff" d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21"/><path fill="#fff" d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.042-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4.003 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-.994-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-1.992 2.5-3c1 0 1 3 1 3"/><path fill="#000" d="M9.5 25.5a.5.5 0 1 1-1 0 .5.5 0 1 1 1 0m5.433-9.75a.5 1.5 30 1 1-.866-.5.5 1.5 30 1 1 .866.5"/></g></symbol><symbol id="pc-wP" viewBox="0 0 45 45"><path fill="#fff" stroke="#000" stroke-linecap="round" stroke-width="1.5" d="M22.5 9c-2.21 0-4 1.79-4 4 0 .89.29 1.71.78 2.38C17.33 16.5 16 18.59 16 21c0 2.03.94 3.84 2.41 5.03-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47 1.47-1.19 2.41-3 2.41-5.03 0-2.41-1.33-4.5-3.28-5.62.49-.67.78-1.49.78-2.38 0-2.21-1.79-4-4-4z"/></symbol><symbol id="pc-bK" viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path stroke-linejoin="miter" d="M22.5 11.6V6"/><path fill="#000" stroke-linecap="butt" stroke-linejoin="miter" d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5"/><path fill="#000" d="M11.5 37a22.3 22.3 0 0 0 21 0v-7s9-4.5 6-10.5c-4-6.5-13.5-3.5-16 4V27v-3.5c-3.5-7.5-13-10.5-16-4-3 6 5 10 5 10z"/><path stroke-linejoin="miter" d="M20 8h5"/><path stroke="#ececec" d="M32 29.5s8.5-4 6-9.7C34.1 14 25 18 22.5 24.6v2.1-2.1C20 18 9.9 14 7 19.9c-2.5 5.6 4.8 9 4.8 9"/><path stroke="#ececec" d="M11.5 30c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0"/></g></symbol><symbol id="pc-bQ" viewBox="0 0 45 45"><g fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><g stroke="none"><circle cx="6" cy="12" r="2.75"/><circle cx="14" cy="9" r="2.75"/><circle cx="22.5" cy="8" r="2.75"/><circle cx="31" cy="9" r="2.75"/><circle cx="39" cy="12" r="2.75"/></g><path stroke-linecap="butt" d="M9 26c8.5-1.5 21-1.5 27 0l2.5-12.5L31 25l-.3-14.1-5.2 13.6-3-14.5-3 14.5-5.2-13.6L14 25 6.5 13.5z"/><path stroke-linecap="butt" d="M9 26c0 2 1.5 2 2.5 4 1 1.5 1 1 .5 3.5-1.5 1-1.5 2.5-1.5 2.5-1.5 1.5.5 2.5.5 2.5 6.5 1 16.5 1 23 0 0 0 1.5-1 0-2.5 0 0 .5-1.5-1-2.5-.5-2.5-.5-2 .5-3.5 1-2 2.5-2 2.5-4-8.5-1.5-18.5-1.5-27 0z"/><path fill="none" stroke-linecap="butt" d="M11 38.5a35 35 1 0 0 23 0"/><path fill="none" stroke="#ececec" d="M11 29a35 35 1 0 1 23 0m-21.5 2.5h20m-21 3a35 35 1 0 0 22 0m-23 3a35 35 1 0 0 24 0"/></g></symbol><symbol id="pc-bR" viewBox="0 0 45 45"><g fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path stroke-linecap="butt" d="M9 39h27v-3H9zm3.5-7 1.5-2.5h17l1.5 2.5zm-.5 4v-4h21v4z"/><path stroke-linecap="butt" stroke-linejoin="miter" d="M14 29.5v-13h17v13z"/><path stroke-linecap="butt" d="M14 16.5 11 14h23l-3 2.5zM11 14V9h4v2h5V9h5v2h5V9h4v5z"/><path fill="none" stroke="#ececec" stroke-linejoin="miter" stroke-width="1" d="M12 35.5h21m-20-4h19m-18-2h17m-17-13h17M11 14h23"/></g></symbol><symbol id="pc-bB" viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><g fill="#000" stroke-linecap="butt"><path d="M9 36c3.4-1 10.1.4 13.5-2 3.4 2.4 10.1 1 13.5 2 0 0 1.6.5 3 2-.7 1-1.6 1-3 .5-3.4-1-10.1.5-13.5-1-3.4 1.5-10.1 0-13.5 1-1.4.5-2.3.5-3-.5 1.4-2 3-2 3-2z"/><path d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/><path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z"/></g><path stroke="#ececec" stroke-linejoin="miter" d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5"/></g></symbol><symbol id="pc-bN" viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path fill="#000" d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21"/><path fill="#000" d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.04-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-1-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-2 2.5-3c1 0 1 3 1 3"/><path fill="#ececec" stroke="#ececec" d="M9.5 25.5a.5.5 0 1 1-1 0 .5.5 0 1 1 1 0m5.43-9.75a.5 1.5 30 1 1-.86-.5.5 1.5 30 1 1 .86.5"/><path fill="#ececec" stroke="none" d="m24.55 10.4-.45 1.45.5.15c3.15 1 5.65 2.49 7.9 6.75S35.75 29.06 35.25 39l-.05.5h2.25l.05-.5c.5-10.06-.88-16.85-3.25-21.34s-5.79-6.64-9.19-7.16z"/></g></symbol><symbol id="pc-bP" viewBox="0 0 45 45"><path stroke="#000" stroke-linecap="round" stroke-width="1.5" d="M22.5 9a4 4 0 0 0-3.22 6.38 6.48 6.48 0 0 0-.87 10.65c-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47a6.46 6.46 0 0 0-.87-10.65A4.01 4.01 0 0 0 22.5 9z"/></symbol></defs></svg>
+</div>
+
+<script>/*CHESS*/</script>
+<script>/*CORE*/</script>
+<script>
+(function () {
+  'use strict';
+  var core = createCore(window.Chess);
+  var CLASSES = core.CLASSES;
+  var SAMPLE = /*SAMPLE*/null;
+  var NOTES = {
+    legendary: 'Жертва, после которой другого пути к победе почти нет.',
+    brilliant: 'Умная жертва материала, которая оказывается лучшим ходом.',
+    great: 'Единственный сильный ход в позиции.',
+    best: 'Первая линия движка.',
+    excellent: 'Почти не уступает лучшему ходу.',
+    good: 'Разумный ход, небольшая потеря оценки.',
+    book: 'Известный дебютный ход.',
+    inaccuracy: 'Позиция немного ухудшилась.',
+    mistake: 'Заметная потеря: соперник получил шанс.',
+    miss: 'Шанс использовать промах соперника упущен.',
+    blunder: 'Грубая ошибка: оценка резко упала.'
+  };
+  var ORDER = ['legendary','brilliant','great','best','excellent','good','book','inaccuracy','mistake','miss','blunder'];
+  var ICON_PLAY = '<svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>';
+  var ICON_PAUSE = '<svg viewBox="0 0 24 24"><path d="M8.5 5.5v13M15.5 5.5v13" stroke-width="3.4"/></svg>';
+  var BAD = { inaccuracy: 1, mistake: 1, miss: 1, blunder: 1 };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var analysis = null, cur = -1, flipped = false, playTimer = null;
+  var vr = null, sel = null; /* vr — свой вариант: { recs, idx }, cur остаётся на позиции партии */
+  var ed = null; /* редактор доски */
+  var hint = null, hintOn = false, hintTok = 0;
+  function curFen() {
+    if (ed) return edPlacement() + ' ' + ed.turn + ' - - 0 1';
+    return vr && vr.idx >= 0 ? vr.recs[vr.idx].fen : (cur < 0 ? analysis.startFen : analysis.moves[cur].fen);
+  }
+  function curRec() { if (ed) return null; return vr && vr.idx >= 0 ? vr.recs[vr.idx] : (cur >= 0 ? analysis.moves[cur] : null); }
+
+  /* ---------- вспомогательное ---------- */
+  function symClass(sym) { return sym.length === 3 ? ' s3' : sym.length === 2 ? ' s2' : ''; }
+  function badge(cls, size) {
+    var c = CLASSES[cls];
+    var el = document.createElement('span');
+    el.className = 'badge ' + size + ' cls-' + cls + symClass(c.sym);
+    el.textContent = c.sym;
+    el.setAttribute('aria-hidden', 'true');
+    return el;
+  }
+  function evalText(e, whiteWp) {
+    if (!e) return '0.0';
+    if (e.mate !== null && e.mate !== undefined) {
+      if (e.mate === 0) return whiteWp >= 0.5 ? '1–0' : '0–1';
+      return (e.mate > 0 ? '+' : '−') + 'M' + Math.abs(e.mate);
+    }
+    var v = (e.cp || 0) / 100;
+    return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(1);
+  }
+  function cpFromWp(wp) {
+    var w = Math.min(0.999, Math.max(0.001, wp));
+    return Math.log(w / (1 - w)) / 0.00368208;
+  }
+  function parseFen(fen) {
+    var rows = fen.split(' ')[0].split('/');
+    var grid = [];
+    rows.forEach(function (r) {
+      var line = [];
+      for (var i = 0; i < r.length; i++) {
+        var ch = r[i];
+        if (/\d/.test(ch)) { for (var k = 0; k < +ch; k++) line.push(null); }
+        else line.push(ch);
+      }
+      grid.push(line);
+    });
+    return grid;
+  }
+  function sqIndex(sq) { return { f: sq.charCodeAt(0) - 97, r: 8 - parseInt(sq[1], 10) }; }
+
+  /* ---------- доска ---------- */
+  var NS = 'http://www.w3.org/2000/svg';
+  function svgEl(name, attrs, text) {
+    var e = document.createElementNS(NS, name);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  function drawArrow(svg, pos, uci, color, w) {
+    var ai = sqIndex(uci.slice(0, 2)), bi = sqIndex(uci.slice(2, 4));
+    var pa = pos(ai.f, ai.r), pb = pos(bi.f, bi.r), k = w / 17;
+    var x1 = pa.x + 50, y1 = pa.y + 50, x2 = pb.x + 50, y2 = pb.y + 50;
+    var dx = x2 - x1, dy = y2 - y1, len = Math.sqrt(dx * dx + dy * dy) || 1, ux = dx / len, uy = dy / len;
+    var tx = x2 - ux * 10, ty = y2 - uy * 10, bx = tx - ux * 40 * k, by = ty - uy * 40 * k;
+    var ag = svgEl('g', { opacity: 0.86, 'pointer-events': 'none', style: 'filter: drop-shadow(0 2px 2px rgba(0,0,0,.35))' });
+    ag.appendChild(svgEl('line', { x1: x1 + ux * 16, y1: y1 + uy * 16, x2: bx, y2: by, stroke: color, 'stroke-width': w, 'stroke-linecap': 'round' }));
+    ag.appendChild(svgEl('polygon', { points: tx + ',' + ty + ' ' + (bx - uy * 26 * k) + ',' + (by + ux * 26 * k) + ' ' + (bx + uy * 26 * k) + ',' + (by - ux * 26 * k), fill: color }));
+    svg.appendChild(ag);
+  }
+  function renderBoard() {
+    var svg = $('board');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var fen = curFen();
+    var grid = parseFen(fen);
+    var last = curRec();
+    function pos(f, r) { return flipped ? { x: (7 - f) * 100, y: (7 - r) * 100 } : { x: f * 100, y: r * 100 }; }
+
+    for (var r = 0; r < 8; r++) for (var f = 0; f < 8; f++) {
+      var p = pos(f, r);
+      var dark = (f + r) % 2 === 1;
+      svg.appendChild(svgEl('rect', { x: p.x, y: p.y, width: 100, height: 100, fill: dark ? 'var(--sq-dark)' : 'var(--sq-light)' }));
+    }
+    if (last) {
+      [last.from, last.to].forEach(function (sq) {
+        var i = sqIndex(sq), p = pos(i.f, i.r);
+        svg.appendChild(svgEl('rect', { x: p.x, y: p.y, width: 100, height: 100, fill: 'var(--hl)' }));
+      });
+    }
+    if (sel) {
+      var si = sqIndex(sel), sp = pos(si.f, si.r);
+      svg.appendChild(svgEl('rect', { x: sp.x, y: sp.y, width: 100, height: 100, fill: 'var(--hl)' }));
+    }
+    // координаты
+    for (var i2 = 0; i2 < 8; i2++) {
+      var fileIdx = flipped ? 7 - i2 : i2;
+      var rankIdx = flipped ? 7 - i2 : i2;
+      var darkF = ((fileIdx + (flipped ? 0 : 7)) % 2 === 1);
+      svg.appendChild(svgEl('text', { x: i2 * 100 + 84, y: 792, class: 'coord', 'text-anchor': 'middle', fill: ((i2 + 7) % 2 === 1) ? 'var(--sq-light)' : 'var(--sq-dark)' }, 'abcdefgh'[fileIdx]));
+      svg.appendChild(svgEl('text', { x: 8, y: i2 * 100 + 22, class: 'coord', fill: (i2 % 2 === 0) ? 'var(--sq-dark)' : 'var(--sq-light)' }, String(8 - rankIdx)));
+    }
+    // фигуры
+    var pieces = svgEl('g', { 'class': 'pieces' });
+    for (var rr = 0; rr < 8; rr++) for (var ff = 0; ff < 8; ff++) {
+      var ch = grid[rr][ff];
+      if (!ch) continue;
+      var pp = pos(ff, rr);
+      pieces.appendChild(svgEl('use', { href: '#pc-' + (ch === ch.toUpperCase() ? 'w' : 'b') + ch.toUpperCase(), x: pp.x, y: pp.y, width: 100, height: 100 }));
+    }
+    svg.appendChild(pieces);
+    // куда можно сходить выбранной фигурой
+    if (sel) {
+      var tg = {};
+      new window.Chess(fen).moves({ square: sel, verbose: true }).forEach(function (m) { tg[m.to] = m.captured || m.flags.indexOf('e') >= 0; });
+      Object.keys(tg).forEach(function (sq) {
+        var ti = sqIndex(sq), tp = pos(ti.f, ti.r);
+        if (tg[sq]) svg.appendChild(svgEl('circle', { cx: tp.x + 50, cy: tp.y + 50, r: 44, fill: 'none', stroke: 'rgba(30,40,60,.45)', 'stroke-width': 9, 'pointer-events': 'none' }));
+        else svg.appendChild(svgEl('circle', { cx: tp.x + 50, cy: tp.y + 50, r: 16, fill: 'rgba(30,40,60,.42)', 'pointer-events': 'none' }));
+      });
+    }
+    // стрелки: как надо было сходить, лучшие ходы, анализ редактора
+    if (ed) (ed.arrows || []).forEach(function (a) { drawArrow(svg, pos, a.uci, a.color, a.w); });
+    else {
+      if (last && last.best && !last.isBest && BAD[last.cls]) drawArrow(svg, pos, last.best, '#5fb336', 17);
+      if (hint && hint.fen === fen) hint.items.forEach(function (it) { if (it.uci) drawArrow(svg, pos, it.uci, it.color, it.w); });
+    }
+    // значок качества хода
+    if (last && last.cls) {
+      var di = sqIndex(last.to), dp = pos(di.f, di.r);
+      var cx = dp.x + 76, cy = dp.y + 24;
+      var defsId = 'g-' + last.cls;
+      var fill = 'var(--c-' + last.cls + ')';
+      if (last.cls === 'legendary') {
+        var defs = svgEl('defs', {});
+        var lg = svgEl('linearGradient', { id: defsId, x1: 0, y1: 0, x2: 1, y2: 1 });
+        lg.appendChild(svgEl('stop', { offset: '0%', 'stop-color': 'var(--c-legendary-a)' }));
+        lg.appendChild(svgEl('stop', { offset: '100%', 'stop-color': 'var(--c-legendary-b)' }));
+        defs.appendChild(lg); svg.appendChild(defs);
+        fill = 'url(#' + defsId + ')';
+        svg.appendChild(svgEl('circle', { cx: cx, cy: cy, r: 31, fill: 'none', stroke: 'var(--c-legendary-a)', 'stroke-width': 3, opacity: 0.6 }));
+      }
+      svg.appendChild(svgEl('circle', { cx: cx, cy: cy, r: 25, fill: fill, stroke: '#fff', 'stroke-width': 3, style: 'filter: drop-shadow(0 3px 3px rgba(0,0,0,.4))' }));
+      var sym = CLASSES[last.cls].sym;
+      svg.appendChild(svgEl('text', {
+        x: cx, y: cy + (sym.length === 3 ? 7 : 9), 'text-anchor': 'middle',
+        'font-size': sym.length === 3 ? 21 : sym.length === 2 ? 26 : 30, 'font-weight': 800,
+        fill: last.cls === 'inaccuracy' ? '#2b2100' : '#fff', style: 'font-family: var(--font-display)'
+      }, sym));
+    }
+  }
+
+  /* ---------- шкала оценки ---------- */
+  function currentWhiteWp() { if (ed) return ed.wp; var r = curRec(); return r ? r.whiteWp : analysis.startWp; }
+  function currentEval() {
+    if (ed) return ed.eval;
+    var r = curRec();
+    if (!r) return { cp: Math.round(cpFromWp(analysis.startWp)), mate: null };
+    return r.evalAfter;
+  }
+  function renderEval() {
+    var wp = currentWhiteWp();
+    var bar = $('evalbar');
+    bar.classList.toggle('flipped', flipped);
+    $('evalWhite').style.height = (wp * 100).toFixed(1) + '%';
+    var txt = evalText(currentEval(), wp);
+    var whiteAhead = wp >= 0.5;
+    // подпись у конца шкалы того, кто лучше стоит
+    var whiteEnd = flipped ? 'top' : 'bot';
+    var blackEnd = flipped ? 'bot' : 'top';
+    $('numTop').textContent = ''; $('numBot').textContent = '';
+    var el = $(whiteAhead ? (whiteEnd === 'top' ? 'numTop' : 'numBot') : (blackEnd === 'top' ? 'numTop' : 'numBot'));
+    el.textContent = txt;
+    el.className = 'num ' + (el.id === 'numTop' ? 'top' : 'bot') + (whiteAhead ? ' onwhite' : ' onblack');
+    bar.setAttribute('aria-label', 'Оценка позиции: ' + txt);
+  }
+
+  /* ---------- карточка хода ---------- */
+  function renderMoveInfo() {
+    var box = $('moveinfo');
+    box.textContent = '';
+    var m = curRec();
+    if (!m) {
+      var d = document.createElement('div');
+      d.style.gridColumn = '1 / -1';
+      var t = document.createElement('div'); t.className = 'mi-title'; t.textContent = 'Начальная позиция';
+      var n = document.createElement('div'); n.className = 'mi-note'; n.textContent = 'Листайте ходы кнопками, проведите пальцем по графику или сходите сами прямо на доске.';
+      d.appendChild(t); d.appendChild(n); box.appendChild(d);
+      return;
+    }
+    var num = Math.floor(m.ply / 2) + 1;
+    var label = num + (m.color === 'w' ? '. ' : '… ') + m.san + ' ';
+    var d2 = document.createElement('div'); d2.style.minWidth = 0;
+    var t2 = document.createElement('div'); t2.className = 'mi-title';
+    var san = document.createElement('span'); san.textContent = label;
+    t2.appendChild(san);
+    if (m.pending || m.failed) {
+      var wt = document.createElement('span'); wt.style.color = 'var(--muted)'; wt.textContent = m.failed ? '— не удалось оценить' : '— считаю…';
+      t2.appendChild(wt); d2.appendChild(t2);
+      d2.style.gridColumn = '1 / -1';
+      box.appendChild(d2);
+      return;
+    }
+    var c = CLASSES[m.cls];
+    box.appendChild(badge(m.cls, 'lg'));
+    var nm = document.createElement('span'); nm.className = 'txt-' + m.cls; nm.textContent = '— ' + c.name;
+    t2.appendChild(nm);
+    var ev = document.createElement('div'); ev.className = 'mi-eval';
+    ev.textContent = 'Оценка ' + evalText(m.evalAfter, m.whiteWp);
+    var note = document.createElement('div'); note.className = 'mi-note';
+    var bad = !m.isBest && m.bestSan && BAD[m.cls];
+    if (bad) {
+      var b = document.createElement('b'); b.textContent = m.bestSan;
+      note.appendChild(document.createTextNode('Лучше было '));
+      note.appendChild(b);
+      note.appendChild(document.createTextNode(' — стрелка на доске'));
+    } else note.textContent = NOTES[m.cls];
+    d2.appendChild(t2); d2.appendChild(ev); d2.appendChild(note);
+    if (bad) {
+      var btn = document.createElement('button'); btn.type = 'button'; btn.className = 'mi-btn';
+      btn.textContent = 'Сыграть ' + m.bestSan;
+      btn.onclick = playBest;
+      d2.appendChild(btn);
+    }
+    box.appendChild(d2);
+  }
+
+  /* ---------- график ---------- */
+  var GW = 400, GH = 120, PAD = 8;
+  function gx(i, n) { return PAD + (GW - 2 * PAD) * (i / n); }
+  function gy(wp) { return 10 + (GH - 20) * (1 - wp); }
+  function renderGraph() {
+    var svg = $('graph');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var moves = analysis.moves, n = moves.length;
+    var pts = [analysis.startWp].concat(moves.map(function (m) { return m.whiteWp; }));
+    var defs = svgEl('defs', {});
+    var lg = svgEl('linearGradient', { id: 'gfill', x1: 0, y1: 0, x2: 0, y2: 1 });
+    lg.appendChild(svgEl('stop', { offset: '0%', style: 'stop-color: var(--graph-line); stop-opacity: .5' }));
+    lg.appendChild(svgEl('stop', { offset: '100%', style: 'stop-color: var(--graph-line); stop-opacity: 0' }));
+    defs.appendChild(lg); svg.appendChild(defs);
+    svg.appendChild(svgEl('rect', { x: 0, y: 0, width: GW, height: GH, rx: 18, fill: 'var(--field)' }));
+    var line = '';
+    pts.forEach(function (wp, i) {
+      line += (i ? 'L' : 'M') + gx(i, n).toFixed(1) + ',' + gy(wp).toFixed(1);
+    });
+    var area = 'M' + gx(0, n).toFixed(1) + ',' + (GH - 10) + ' ' + line.replace(/^M/, 'L') + ' L' + gx(n, n).toFixed(1) + ',' + (GH - 10) + ' Z';
+    svg.appendChild(svgEl('path', { d: area, fill: 'url(#gfill)' }));
+    svg.appendChild(svgEl('line', { x1: PAD, x2: GW - PAD, y1: gy(0.5), y2: gy(0.5), stroke: 'var(--line)', 'stroke-width': 1.2, 'stroke-dasharray': '4 4' }));
+    svg.appendChild(svgEl('path', { d: line, fill: 'none', stroke: 'var(--graph-line)', 'stroke-width': 2.4, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+    svg.appendChild(svgEl('text', { x: PAD + 6, y: 20 }, 'белые лучше'));
+    svg.appendChild(svgEl('text', { x: PAD + 6, y: GH - 12 }, 'чёрные лучше'));
+    var marks = { legendary: 1, brilliant: 1, great: 0, miss: 1, mistake: 1, blunder: 1 };
+    moves.forEach(function (m, i) {
+      if (!marks[m.cls]) return;
+      var col = m.cls === 'legendary' ? 'var(--c-legendary-b)' : 'var(--c-' + m.cls + ')';
+      svg.appendChild(svgEl('circle', { cx: gx(i + 1, n).toFixed(1), cy: gy(m.whiteWp).toFixed(1), r: m.cls === 'legendary' ? 5.6 : 4, fill: col, stroke: '#fff', 'stroke-width': 1.6 }));
+    });
+    var cx = gx(cur + 1, n);
+    svg.appendChild(svgEl('line', { id: 'gcur', x1: cx, x2: cx, y1: 6, y2: GH - 6, stroke: 'var(--ink)', 'stroke-width': 1.4, opacity: 0.45 }));
+    svg.appendChild(svgEl('circle', { id: 'gdot', cx: cx, cy: gy(currentWhiteWp()), r: 5.5, fill: 'var(--accent)', stroke: '#fff', 'stroke-width': 2.2 }));
+  }
+  function moveCursor() {
+    var l = $('gcur'); if (!l) return;
+    var cx = gx(cur + 1, analysis.moves.length);
+    l.setAttribute('x1', cx); l.setAttribute('x2', cx);
+    var d = $('gdot');
+    if (d) { d.setAttribute('cx', cx); d.setAttribute('cy', gy(currentWhiteWp())); }
+  }
+  function graphPly(ev) {
+    var svg = $('graph'), rect = svg.getBoundingClientRect();
+    var x = (ev.clientX - rect.left) / rect.width * GW;
+    var n = analysis.moves.length;
+    var i = Math.round((x - PAD) / (GW - 2 * PAD) * n);
+    return Math.max(0, Math.min(n, i)) - 1;
+  }
+
+  /* ---------- список ходов ---------- */
+  function renderMoveList() {
+    var box = $('movelist'); box.textContent = '';
+    var moves = analysis.moves;
+    for (var i = 0; i < moves.length; i += 2) {
+      var row = document.createElement('div'); row.className = 'mrow';
+      var num = document.createElement('div'); num.className = 'mnum'; num.textContent = (i / 2 + 1) + '.';
+      row.appendChild(num);
+      for (var k = 0; k < 2; k++) {
+        var m = moves[i + k];
+        if (!m) { row.appendChild(document.createElement('div')); continue; }
+        var b = document.createElement('button');
+        b.className = 'chip'; b.type = 'button'; b.dataset.ply = String(i + k);
+        b.appendChild(badge(m.cls, 'sm'));
+        var s = document.createElement('span'); s.className = 'san'; s.textContent = m.san; b.appendChild(s);
+        b.setAttribute('aria-label', m.san + ', ' + CLASSES[m.cls].name);
+        row.appendChild(b);
+      }
+      box.appendChild(row);
+    }
+  }
+  function markChip() {
+    var box = $('movelist');
+    var on = box.querySelector('.chip.on');
+    if (on) on.classList.remove('on');
+    if (cur < 0) return;
+    var chip = box.querySelector('.chip[data-ply="' + cur + '"]');
+    if (!chip) return;
+    chip.classList.add('on');
+    var top = chip.offsetTop - box.offsetTop;
+    if (top < box.scrollTop || top + chip.offsetHeight > box.scrollTop + box.clientHeight) {
+      box.scrollTop = Math.max(0, top - box.clientHeight / 2 + chip.offsetHeight / 2);
+    }
+  }
+
+  /* ---------- итоги ---------- */
+  function renderSummary() {
+    var s = core.summarize(analysis.moves);
+    var box = $('summary'); box.textContent = '';
+    [['w', 'Белые', $('nameW').textContent], ['b', 'Чёрные', $('nameB').textContent]].forEach(function (x) {
+      var col = document.createElement('div'); col.className = 'sumcol';
+      var head = document.createElement('div'); head.className = 'sumhead';
+      var nm = document.createElement('div'); nm.className = 'sumname'; nm.textContent = x[2];
+      var ac = document.createElement('div'); ac.className = 'sumacc'; ac.textContent = s[x[0]].acc.toFixed(1) + '%';
+      head.appendChild(nm); head.appendChild(ac); col.appendChild(head);
+      var list = document.createElement('div'); list.className = 'sumlist';
+      ORDER.forEach(function (c) {
+        var n = s[x[0]].counts[c]; if (!n) return;
+        var r = document.createElement('div'); r.className = 'sumrow';
+        r.appendChild(badge(c, 'sm'));
+        var l = document.createElement('span'); l.textContent = CLASSES[c].name; r.appendChild(l);
+        var cnt = document.createElement('span'); cnt.className = 'n'; cnt.textContent = n; r.appendChild(cnt);
+        list.appendChild(r);
+      });
+      col.appendChild(list); box.appendChild(col);
+    });
+    $('metaW').textContent = 'Точность ' + s.w.acc.toFixed(1) + '%';
+    $('metaB').textContent = 'Точность ' + s.b.acc.toFixed(1) + '%';
+  }
+  function renderLegend() {
+    var box = $('legend'); box.textContent = '';
+    ORDER.forEach(function (c) {
+      var sp = document.createElement('span');
+      sp.appendChild(badge(c, 'sm'));
+      sp.appendChild(document.createTextNode(CLASSES[c].name));
+      box.appendChild(sp);
+    });
+  }
+
+  /* ---------- шапка партии ---------- */
+  function renderHeader() {
+    var h = analysis.headers || {};
+    $('nameW').textContent = h.White && h.White !== '?' ? h.White : 'Белые';
+    $('nameB').textContent = h.Black && h.Black !== '?' ? h.Black : 'Чёрные';
+    $('result').textContent = h.Result && h.Result !== '*' ? h.Result.replace('1/2-1/2', '½–½').replace(/-/g, '–') : '—';
+    var parts = [];
+    if (h.Event && h.Event !== '?') parts.push(h.Event);
+    if (h.Date && h.Date.indexOf('?') < 0) parts.push(h.Date.replace(/\./g, '-'));
+    else if (h.Date && /^\d{4}/.test(h.Date)) parts.push(h.Date.slice(0, 4));
+    parts.push('глубина ' + analysis.depth);
+    $('gmeta').textContent = parts.join(' · ');
+  }
+
+  /* ---------- навигация ---------- */
+  function refresh() {
+    var n = analysis.moves.length;
+    renderBoard(); renderEval(); renderMoveInfo(); renderVarBar(); moveCursor(); markChip();
+    $('bPrev').disabled = $('bFirst').disabled = !vr && cur < 0;
+    $('bNext').disabled = vr ? vr.idx >= vr.recs.length - 1 : cur >= n - 1;
+    updateHint();
+  }
+  function goTo(i, opts) {
+    leaveEditor();
+    var n = analysis.moves.length;
+    vr = null; sel = null;
+    cur = Math.max(-1, Math.min(n - 1, i));
+    refresh();
+    if (!(opts && opts.keepPlay) && playTimer) stopPlay();
+  }
+  function stepPrev() {
+    leaveEditor();
+    if (vr && vr.idx >= 0) { vr.idx--; sel = null; refresh(); }
+    else goTo(cur - 1);
+  }
+  function stepNext() {
+    leaveEditor();
+    if (vr) { if (vr.idx < vr.recs.length - 1) { vr.idx++; sel = null; refresh(); } }
+    else goTo(cur + 1);
+  }
+  function exitVar() { leaveEditor(); vr = null; sel = null; refresh(); }
+
+
+  /* ---------- лучшие ходы за обе стороны ---------- */
+  function sanOf(fen, uci) {
+    try { return new window.Chess(fen).move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] || 'q' }).san; } catch (e) { return uci; }
+  }
+  function lineEval(ev, side) { /* оценка с точки зрения белых */
+    var l = ev.lines[0], sg = side === 'w' ? 1 : -1;
+    var wpW = side === 'w' ? l.wp : 1 - l.wp;
+    return evalText({ cp: l.cp === null ? null : sg * l.cp, mate: l.mate === null ? null : sg * l.mate }, wpW);
+  }
+  function renderHintText(msg) {
+    var box = $('hintText'); box.textContent = '';
+    $('bHint').classList.toggle('on', hintOn);
+    if (!hintOn) return;
+    if (msg) { box.textContent = msg; return; }
+    if (!hint) return;
+    hint.items.forEach(function (it) {
+      var row = document.createElement('div');
+      var dot = document.createElement('i'); dot.className = 'hd' + (it.opp ? ' o' : '');
+      row.appendChild(dot);
+      row.appendChild(document.createTextNode(it.label + ': '));
+      var b = document.createElement('b'); b.textContent = it.san ? it.san + ' (' + it.ev + ')' : '—'; row.appendChild(b);
+      box.appendChild(row);
+    });
+  }
+  function updateHint() {
+    var t = ++hintTok;
+    if (!hintOn || ed) { hint = null; renderHintText(); return; }
+    var fen = curFen(), g = new window.Chess(fen);
+    if (g.isGameOver()) { hint = null; renderHintText(g.isCheckmate() ? 'Мат — ходов нет.' : 'Ничья — ходов нет.'); return; }
+    var turn = g.turn(), other = turn === 'w' ? 'b' : 'w';
+    var jobs = [{ fen: fen, side: turn, opp: false }];
+    if (!g.isCheck()) { var pr = fen.split(' '); pr[1] = other; pr[3] = '-'; jobs.push({ fen: pr.join(' '), side: other, opp: true }); }
+    renderHintText('Считаю…');
+    Promise.all(jobs.map(function (j) { return evalQ(j.fen); })).then(function (evs) {
+      if (t !== hintTok || !hintOn || ed) return;
+      var items = jobs.map(function (j, i) {
+        var ev = evs[i], nm = j.side === 'w' ? 'Белые' : 'Чёрные';
+        var base = { opp: j.opp, label: j.opp ? 'Если бы ходили ' + nm.toLowerCase() : 'Ход ' + (j.side === 'w' ? 'белых' : 'чёрных'), color: j.opp ? '#3f8cff' : '#5fb336', w: j.opp ? 13 : 17 };
+        if (!ev.lines.length) return base;
+        var u = ev.lines[0].pv[0];
+        base.uci = u; base.san = sanOf(j.fen, u); base.ev = lineEval(ev, j.side);
+        return base;
+      });
+      hint = { fen: fen, items: items };
+      renderHintText(); renderBoard();
+    }).catch(function () { if (t === hintTok) { hint = null; renderHintText('Не удалось посчитать.'); } });
+  }
+
+  /* ---------- редактор доски с живым анализом ---------- */
+  var liveTok = 0, liveP = null, edTimer = null;
+  var PIECES = ['K', 'Q', 'R', 'B', 'N', 'P'];
+  function edPlacement() {
+    return ed.grid.map(function (row) {
+      var o = '', n = 0;
+      row.forEach(function (c) { if (!c) n++; else { if (n) { o += n; n = 0; } o += c; } });
+      return o + (n ? n : '');
+    }).join('/');
+  }
+  function edCastle() {
+    var g = ed.grid, c = '';
+    if (ed.cast.K && g[7][4] === 'K' && g[7][7] === 'R') c += 'K';
+    if (ed.cast.Q && g[7][4] === 'K' && g[7][0] === 'R') c += 'Q';
+    if (ed.cast.k && g[0][4] === 'k' && g[0][7] === 'r') c += 'k';
+    if (ed.cast.q && g[0][4] === 'k' && g[0][0] === 'r') c += 'q';
+    return c || '-';
+  }
+  function edFen() { return edPlacement() + ' ' + ed.turn + ' ' + edCastle() + ' - 0 1'; }
+  function edValidate() {
+    var g = ed.grid, wk = [], bk = [], wp = 0, bp = 0, tot = 0, bad = null;
+    for (var r = 0; r < 8; r++) for (var f = 0; f < 8; f++) {
+      var c = g[r][f]; if (!c) continue;
+      tot++;
+      if (c === 'K') wk.push([f, r]); else if (c === 'k') bk.push([f, r]);
+      if (c === 'P') wp++; if (c === 'p') bp++;
+      if ((c === 'P' || c === 'p') && (r === 0 || r === 7)) bad = 'Пешка не может стоять на первой или последней горизонтали';
+    }
+    if (wk.length !== 1 || bk.length !== 1) return 'Нужен ровно один король каждого цвета';
+    if (bad) return bad;
+    if (wp > 8 || bp > 8) return 'Слишком много пешек';
+    if (Math.abs(wk[0][0] - bk[0][0]) <= 1 && Math.abs(wk[0][1] - bk[0][1]) <= 1) return 'Короли не могут стоять рядом';
+    try {
+      var fen = edFen();
+      new window.Chess(fen);
+      var pr = fen.split(' '); pr[1] = pr[1] === 'w' ? 'b' : 'w'; pr[2] = '-'; pr[3] = '-';
+      if (new window.Chess(pr.join(' ')).isCheck()) return 'Король под шахом не в свой ход';
+    } catch (e) { return 'Позиция некорректна'; }
+    return null;
+  }
+  function liveStop() {
+    var p = liveP;
+    if (!p) return Promise.resolve();
+    try { session.stop(); } catch (e) {}
+    return p.catch(function () {});
+  }
+  async function liveRestart(fen) {
+    var t = ++liveTok;
+    await liveStop();
+    if (t !== liveTok || !ed) return;
+    var last = 0;
+    var p = session.live(fen, function (lines) {
+      if (t !== liveTok || !ed || !lines.length) return;
+      var now = Date.now();
+      if (now - last < 160) return;
+      last = now; applyLive(fen, lines);
+    });
+    liveP = p;
+    p.then(function (lines) {
+      if (liveP === p) liveP = null;
+      if (t === liveTok && ed && lines.length) applyLive(fen, lines);
+    });
+  }
+  function pvSan(fen, pv, n) {
+    var g = new window.Chess(fen), out = [];
+    var num = parseInt(fen.split(' ')[5] || '1', 10), white = fen.split(' ')[1] === 'w';
+    for (var i = 0; i < pv.length && i < n; i++) {
+      var m;
+      try { m = g.move({ from: pv[i].slice(0, 2), to: pv[i].slice(2, 4), promotion: pv[i][4] || 'q' }); } catch (e) { break; }
+      out.push((white ? num + '. ' : (i === 0 ? num + '… ' : '')) + m.san);
+      if (!white) num++;
+      white = !white;
+    }
+    return out.join(' ');
+  }
+  function applyLive(fen, lines) {
+    var turn = fen.split(' ')[1], sg = turn === 'w' ? 1 : -1, l0 = lines[0];
+    var wpMover = core.winProb(l0.cp, l0.mate);
+    ed.wp = turn === 'w' ? wpMover : 1 - wpMover;
+    ed.eval = { cp: l0.cp === null ? null : sg * l0.cp, mate: l0.mate === null ? null : sg * l0.mate };
+    ed.arrows = lines.slice(0, 2).map(function (l, i) { return { uci: l.pv[0], color: i ? '#3f8cff' : '#5fb336', w: i ? 13 : 17 }; });
+    ed.depth = l0.depth;
+    ed.lineRows = lines.slice(0, 2).map(function (l, i) {
+      var wpm = core.winProb(l.cp, l.mate), ww = turn === 'w' ? wpm : 1 - wpm;
+      return { ev: evalText({ cp: l.cp === null ? null : sg * l.cp, mate: l.mate === null ? null : sg * l.mate }, ww), pv: pvSan(fen, l.pv, 6), main: i === 0 };
+    });
+    renderBoard(); renderEval(); renderEditor();
+  }
+  function edAnalyze() {
+    if (!ed) return;
+    ed.err = edValidate();
+    ed.lineRows = []; ed.arrows = [];
+    if (ed.err) { liveTok++; liveStop(); renderBoard(); renderEditor(); return; }
+    var fen = edFen(), g = new window.Chess(fen);
+    if (g.isGameOver()) {
+      liveTok++; liveStop();
+      ed.err = g.isCheckmate() ? 'Мат — ходов нет' : 'Пат или ничья — ходов нет';
+      ed.wp = g.isCheckmate() ? (ed.turn === 'w' ? 0 : 1) : 0.5; ed.eval = { cp: g.isCheckmate() ? null : 0, mate: g.isCheckmate() ? 0 : null };
+      renderBoard(); renderEval(); renderEditor(); return;
+    }
+    renderBoard(); renderEditor();
+    startEngine(1).then(function () { return liveRestart(fen); }).catch(function () { ed && (ed.err = 'Не удалось запустить движок'); renderEditor(); });
+  }
+  function edChanged() {
+    ed.arrows = []; ed.lineRows = [];
+    renderBoard(); renderEditor();
+    clearTimeout(edTimer); edTimer = setTimeout(edAnalyze, 300);
+  }
+  function renderEditor() {
+    if (!ed) return;
+    var st = $('edStatus');
+    st.className = 'edstatus' + (ed.err ? ' err' : '');
+    st.textContent = ed.err ? ed.err : (ed.depth ? 'Анализ идёт · глубина ' + ed.depth : 'Считаю…');
+    var box = $('edLines'); box.textContent = '';
+    (ed.lineRows || []).forEach(function (r) {
+      var d = document.createElement('div'); d.className = 'edline';
+      var e = document.createElement('span'); e.className = 'ev'; e.textContent = r.ev;
+      var p = document.createElement('span'); p.className = 'pv'; p.textContent = r.pv;
+      d.appendChild(e); d.appendChild(p); box.appendChild(d);
+    });
+    $('edTurn').textContent = ed.turn === 'w' ? 'Ход белых' : 'Ход чёрных';
+    Array.prototype.forEach.call($('edPal').children, function (b) { b.classList.toggle('on', b.dataset.tool === (ed.tool || 'hand')); });
+    Array.prototype.forEach.call($('edCast').children, function (b) { b.classList.toggle('on', !!ed.cast[b.dataset.c]); });
+  }
+  function buildEditorUi() {
+    var pal = $('edPal');
+    ['w', 'b'].forEach(function (col) {
+      PIECES.forEach(function (pc) {
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'pbtn' + (col === 'b' ? ' light' : '');
+        b.dataset.tool = col === 'w' ? pc : pc.toLowerCase();
+        var sv = svgEl('svg', { viewBox: '0 0 45 45' }); sv.appendChild(svgEl('use', { href: '#pc-' + col + pc }));
+        b.appendChild(sv); b.setAttribute('aria-label', (col === 'w' ? 'Белая ' : 'Чёрная ') + pc);
+        pal.appendChild(b);
+      });
+      var x = document.createElement('button'); x.type = 'button'; x.className = 'pbtn';
+      x.dataset.tool = col === 'w' ? 'x' : 'hand'; x.textContent = col === 'w' ? 'Ластик' : 'Рука';
+      pal.appendChild(x);
+    });
+    // у светлых клеток палитры чёрные фигуры читаются лучше; у чёрных — тоже на светлом фоне
+    pal.addEventListener('click', function (e) {
+      var b = e.target.closest('.pbtn'); if (!b || !ed) return;
+      var t = b.dataset.tool; ed.tool = t === 'hand' ? null : t; ed.lifted = false; renderEditor();
+    });
+    [['K', 'Б O-O'], ['Q', 'Б O-O-O'], ['k', 'Ч O-O'], ['q', 'Ч O-O-O']].forEach(function (c) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'tbtn'; b.dataset.c = c[0]; b.textContent = c[1];
+      b.onclick = function () { ed.cast[c[0]] = !ed.cast[c[0]]; edChanged(); };
+      $('edCast').appendChild(b);
+    });
+    $('edTurn').onclick = function () { ed.turn = ed.turn === 'w' ? 'b' : 'w'; edChanged(); };
+    $('edClear').onclick = function () { ed.grid = parseFen('8/8/8/8/8/8/8/8 w - - 0 1'); edChanged(); };
+    $('edStart').onclick = function () { ed.grid = parseFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w'); ed.turn = 'w'; ed.cast = { K: 1, Q: 1, k: 1, q: 1 }; edChanged(); };
+    $('edCur').onclick = function () { loadEdFromGame(); edChanged(); };
+  }
+  function loadEdFromGame() {
+    var fen = vr && vr.idx >= 0 ? vr.recs[vr.idx].fen : (cur < 0 ? analysis.startFen : analysis.moves[cur].fen);
+    var pr = fen.split(' ');
+    ed.grid = parseFen(fen).map(function (r) { return r.slice(); });
+    ed.turn = pr[1] === 'b' ? 'b' : 'w';
+    var c = pr[2] || '-';
+    ed.cast = { K: c.indexOf('K') >= 0, Q: c.indexOf('Q') >= 0, k: c.indexOf('k') >= 0, q: c.indexOf('q') >= 0 };
+  }
+  function openEditor() {
+    if (!analysis || running) return;
+    if (playTimer) stopPlay();
+    ed = { grid: null, turn: 'w', cast: {}, tool: null, lifted: false, arrows: [], lineRows: [], wp: currentWhiteWp(), eval: currentEval(), err: null, depth: 0 };
+    loadEdFromGame();
+    sel = null; hint = null; renderHintText();
+    $('editor').hidden = false; document.body.classList.add('editing'); $('bEdit').classList.add('on');
+    renderBoard(); renderEval(); renderEditor();
+    edAnalyze();
+  }
+  function leaveEditor() {
+    if (!ed) return;
+    ed = null; liveTok++; clearTimeout(edTimer); liveStop();
+    $('editor').hidden = true; document.body.classList.remove('editing'); $('bEdit').classList.remove('on');
+  }
+  function edClick(f, r) {
+    var g = ed.grid, c = g[r][f];
+    if (ed.tool === 'x') { g[r][f] = null; }
+    else if (ed.tool) {
+      g[r][f] = ed.tool;
+      if (ed.lifted) { ed.tool = null; ed.lifted = false; }
+    } else if (c) { ed.tool = c; ed.lifted = true; g[r][f] = null; }
+    else return;
+    renderEditor(); edChanged();
+  }
+
+  /* ---------- свои ходы ---------- */
+  var engQ = Promise.resolve();
+  function evalQ(fen) {
+    var key = core.posKey(fen);
+    if (analysis.cache[key]) return Promise.resolve(analysis.cache[key]);
+    var p = engQ.then(function () {
+      if (analysis.cache[key]) return analysis.cache[key];
+      return liveStop().then(function () { return startEngine(1); }).then(function () { return core.evalPosition(fen, session, 14); }).then(function (ev) { analysis.cache[key] = ev; return ev; });
+    });
+    engQ = p.catch(function () {});
+    return p;
+  }
+  function makeMove(uci) {
+    var fenBefore = curFen();
+    var g = new window.Chess(fenBefore), mv;
+    try { mv = g.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] || 'q' }); } catch (e) { return; }
+    if (!mv) return;
+    if (playTimer) stopPlay();
+    var base = curRec();
+    var prevLoss = base && !base.pending && base.loss ? base.loss : 0;
+    var prevWp = currentWhiteWp(), prevEval = currentEval();
+    if (!vr) vr = { recs: [], idx: -1 };
+    vr.recs.length = vr.idx + 1;
+    var rec = {
+      pending: true, ply: cur + 1 + vr.recs.length, san: mv.san, uci: mv.from + mv.to + (mv.promotion || ''), color: mv.color,
+      from: mv.from, to: mv.to, fen: mv.after, cls: null, whiteWp: prevWp, evalAfter: prevEval
+    };
+    vr.recs.push(rec); vr.idx = vr.recs.length - 1; sel = null;
+    refresh();
+    var mine = vr;
+    Promise.all([evalQ(fenBefore), evalQ(mv.after)]).then(function (r) {
+      var keepPly = rec.ply;
+      Object.assign(rec, core.buildRecord(99, mv, fenBefore, r[0], r[1], prevLoss));
+      rec.ply = keepPly; rec.pending = false;
+      if (vr === mine) refresh();
+    }).catch(function () {
+      rec.pending = false; rec.failed = true;
+      if (vr === mine) refresh();
+    });
+  }
+  function playBest() {
+    var m = curRec();
+    if (!m || !m.best) return;
+    var uci = m.best;
+    if (vr && vr.idx >= 0) { vr.idx--; } else { var c = cur - 1; vr = null; cur = c; }
+    sel = null;
+    makeMove(uci);
+  }
+  function renderVarBar() {
+    var box = $('varbar'); box.textContent = '';
+    if (!vr) {
+      var h = document.createElement('span'); h.textContent = 'Можно ходить самому: коснитесь фигуры, затем клетки.';
+      box.appendChild(h); return;
+    }
+    var lab = document.createElement('span'); lab.className = 'vlabel'; lab.textContent = 'Свой вариант';
+    box.appendChild(lab);
+    var list = document.createElement('div'); list.className = 'vlist';
+    vr.recs.forEach(function (r, i) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'chip' + (i === vr.idx ? ' on' : '');
+      if (r.cls) b.appendChild(badge(r.cls, 'sm'));
+      var num = Math.floor(r.ply / 2) + 1;
+      var s = document.createElement('span'); s.className = 'san';
+      s.textContent = (r.color === 'w' ? num + '. ' : (i === 0 ? num + '… ' : '')) + r.san;
+      b.appendChild(s);
+      b.onclick = function () { vr.idx = i; sel = null; refresh(); };
+      list.appendChild(b);
+    });
+    box.appendChild(list);
+    var back = document.createElement('button'); back.type = 'button'; back.className = 'vback'; back.textContent = 'К партии';
+    back.onclick = exitVar;
+    box.appendChild(back);
+  }
+  function startPlay() {
+    if (playTimer) return;
+    if (vr) exitVar();
+    if (cur >= analysis.moves.length - 1) goTo(-1, { keepPlay: true });
+    $('bPlay').innerHTML = ICON_PAUSE;
+    playTimer = setInterval(function () {
+      if (cur >= analysis.moves.length - 1) { stopPlay(); return; }
+      goTo(cur + 1, { keepPlay: true });
+    }, 950);
+  }
+  function stopPlay() { clearInterval(playTimer); playTimer = null; $('bPlay').innerHTML = ICON_PLAY; }
+
+  function show(a, startPly) {
+    analysis = a; vr = null; sel = null;
+    if (!analysis.cache) analysis.cache = {};
+    renderHeader(); renderSummary(); renderMoveList(); renderGraph();
+    goTo(startPly === undefined ? -1 : startPly);
+  }
+
+  /* ---------- движок ---------- */
+  var session = null, worker = null, engineLabel = '';
+  var pool = [], curCfg = null;
+  var ENGINE_LITE = { file: 'stockfish-19-lite-single.js', label: 'NNUE', wait: 9000, multi: true };
+  var ENGINE_FULL = { file: 'stockfish-19-single.js', label: 'полный', wait: 90000 };
+  var ENGINE_ASM = { file: 'stockfish-19-asm.js', label: 'asm.js', wait: 40000 };
+  var engineKey = 'lite';
+  function engineList() { return engineKey === 'full' ? [ENGINE_FULL, ENGINE_LITE, ENGINE_ASM] : [ENGINE_LITE, ENGINE_ASM]; }
+  function setEngineTag(html) { $('engineTag').innerHTML = html; }
+  function killPool() {
+    pool.forEach(function (p) { try { p.w.terminate(); } catch (x) {} });
+    pool = []; session = null; worker = null; curCfg = null;
+    engQ = Promise.resolve();
+  }
+  function spawn(cfg) {
+    return new Promise(function (resolve, reject) {
+      var w;
+      try { w = new Worker(cfg.file); } catch (e) { reject(e); return; }
+      var s = new core.UciSession(function (c) { w.postMessage(c); });
+      w.onmessage = function (e) { s.feed(typeof e.data === 'string' ? e.data : String(e.data)); };
+      w.onerror = function () { reject(new Error('worker')); };
+      s.init(cfg.wait).then(function () { resolve({ w: w, s: s }); }, function (err) { try { w.terminate(); } catch (x) {} reject(err); });
+    });
+  }
+  /* n — сколько движков держать: для разбора партии несколько, для одного своего хода хватит одного */
+  async function startEngine(n) {
+    var want = $('engineSel').hidden ? 'lite' : $('engineSel').value;
+    if (pool.length && want !== engineKey) killPool();
+    engineKey = want;
+    if (!pool.length) {
+      var list = engineList();
+      for (var i = 0; i < list.length && !pool.length; i++) {
+        setEngineTag('Stockfish 19 · <b>запуск…</b>');
+        try { pool.push(await spawn(list[i])); curCfg = list[i]; } catch (e) { /* пробуем следующий */ }
+      }
+      if (!pool.length) throw new Error('Не удалось запустить движок в этом окне.');
+    }
+    var target = curCfg.multi ? Math.max(1, n || 1) : 1;
+    var extra = [];
+    for (var k = pool.length; k < target; k++) extra.push(spawn(curCfg).catch(function () { return null; }));
+    (await Promise.all(extra)).forEach(function (p) { if (p) pool.push(p); });
+    session = pool[0].s; worker = pool[0].w; engineLabel = curCfg.label;
+    setEngineTag('Stockfish 19 · <b>' + engineLabel + (pool.length > 1 ? ' ×' + pool.length : '') + '</b>');
+  }
+  function poolSize() {
+    var hc = (navigator.hardwareConcurrency || 4) - 1;
+    return Math.max(1, Math.min(4, hc));
+  }
+
+  /* ---------- запуск разбора ---------- */
+  var running = false, cancelled = false;
+  function setRunning(v) {
+    running = v;
+    $('bGo').disabled = v;
+    $('bCancel').hidden = !v;
+    $('progress').hidden = !v;
+    $('pgn').disabled = v; $('depth').disabled = v;
+  }
+  function showError(msg) { var e = $('error'); e.textContent = msg; e.hidden = !msg; }
+  async function runAnalysis() {
+    var pgn = $('pgn').value.trim();
+    showError('');
+    if (!pgn) { showError('Вставьте PGN партии или выберите файл.'); return; }
+    try { core.parseGame(pgn); } catch (e) { showError('PGN не читается: ' + (e && e.message ? e.message : 'неверный формат') + '.'); return; }
+    setRunning(true); cancelled = false;
+    $('status').textContent = 'Запускаю движок…';
+    try {
+      leaveEditor(); await liveStop(); await engQ;
+      await startEngine(poolSize());
+      var depth = +$('depth').value;
+      var t0 = Date.now();
+      var result = await core.analyzeGame(pgn, pool.map(function (p) { return p.s; }), { depth: depth, cancelled: function () { return cancelled; } }, function (i, n) {
+        $('progressBar').style.width = (i / n * 100).toFixed(0) + '%';
+        var el = (Date.now() - t0) / 1000;
+        var eta = i > 1 ? Math.max(0, Math.round(el / i * (n - i))) : null;
+        $('status').textContent = 'Позиция ' + i + ' из ' + n + (eta !== null ? ' · осталось ~' + eta + ' с' : '');
+      });
+      show(result, -1);
+      /* лишние движки отпускаем, оставляем один для своих ходов */
+      pool.slice(1).forEach(function (p) { try { p.w.terminate(); } catch (x) {} }); pool = pool.slice(0, 1);
+      setEngineTag('Stockfish 19 · <b>' + engineLabel + '</b>');
+      $('status').textContent = 'Готово за ' + Math.round((Date.now() - t0) / 1000) + ' с · глубина ' + depth;
+      $('loader').open = false;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+      if (e && e.message === 'cancel') {
+        $('status').textContent = 'Разбор остановлен.';
+        killPool();
+      } else {
+        showError(e && e.message ? e.message : 'Не получилось разобрать партию.');
+        $('status').textContent = '';
+      }
+    } finally { setRunning(false); }
+  }
+
+  /* ---------- события ---------- */
+  $('bFirst').onclick = function () { goTo(-1); };
+  $('bPrev').onclick = stepPrev;
+  $('bNext').onclick = stepNext;
+  $('bPlay').onclick = function () { playTimer ? stopPlay() : startPlay(); };
+  $('bFlip').onclick = function () { flipped = !flipped; renderBoard(); renderEval(); };
+  $('movelist').addEventListener('click', function (e) {
+    var b = e.target.closest('.chip'); if (b) goTo(+b.dataset.ply);
+  });
+  var scrub = false;
+  var g = $('graph');
+  g.addEventListener('pointerdown', function (e) { scrub = true; try { g.setPointerCapture(e.pointerId); } catch (x) {} goTo(graphPly(e)); });
+  g.addEventListener('pointermove', function (e) { if (scrub) goTo(graphPly(e)); });
+  g.addEventListener('pointerup', function () { scrub = false; });
+  g.addEventListener('pointercancel', function () { scrub = false; });
+  document.addEventListener('keydown', function (e) {
+    if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+    if (e.key === 'ArrowRight') { stepNext(); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft') { stepPrev(); e.preventDefault(); }
+    else if (e.key === 'Home') goTo(-1);
+    else if (e.key === 'End') goTo(analysis.moves.length - 1);
+  });
+  $('bFile').onclick = function () { $('file').click(); };
+  $('file').onchange = function () {
+    var f = this.files && this.files[0]; if (!f) return;
+    var r = new FileReader();
+    r.onload = function () { $('pgn').value = String(r.result || ''); showError(''); };
+    r.readAsText(f);
+  };
+  $('board').addEventListener('click', function (ev) {
+    if (!analysis || running) return;
+    var r = this.getBoundingClientRect();
+    var f = Math.floor((ev.clientX - r.left) / r.width * 8), rk = Math.floor((ev.clientY - r.top) / r.height * 8);
+    if (f < 0 || f > 7 || rk < 0 || rk > 7) return;
+    if (flipped) { f = 7 - f; rk = 7 - rk; }
+    if (ed) { edClick(f, rk); return; }
+    var sq = 'abcdefgh'[f] + (8 - rk);
+    var g = new window.Chess(curFen());
+    if (sel && sel !== sq) {
+      var ms = g.moves({ square: sel, verbose: true });
+      for (var i = 0; i < ms.length; i++) if (ms[i].to === sq) { makeMove(sel + sq + (ms[i].promotion ? 'q' : '')); return; }
+    }
+    var pc = g.get(sq);
+    sel = (pc && pc.color === g.turn() && sq !== sel) ? sq : null;
+    renderBoard();
+  });
+  buildEditorUi();
+  $('bHint').onclick = function () { hintOn = !hintOn; updateHint(); renderBoard(); };
+  $('bEdit').onclick = function () { if (ed) { leaveEditor(); refresh(); } else openEditor(); };
+  $('bGo').onclick = runAnalysis;
+  $('bCancel').onclick = function () { cancelled = true; };
+
+
+  /* ---------- загрузка по нику (только в приложении) ---------- */
+  var isApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  function httpGet(url, accept) {
+    var cap = window.Capacitor;
+    if (cap && cap.Plugins && cap.Plugins.CapacitorHttp) {
+      return cap.Plugins.CapacitorHttp.request({ url: url, method: 'GET', headers: { Accept: accept || '*/*' } }).then(function (r) {
+        if (r.status >= 400) { var e = new Error('http ' + r.status); e.status = r.status; throw e; }
+        return r.data;
+      });
+    }
+    return fetch(url, { headers: { Accept: accept || '*/*' } }).then(function (r) {
+      if (!r.ok) { var e = new Error('http ' + r.status); e.status = r.status; throw e; }
+      return (accept && accept.indexOf('json') >= 0) ? r.json() : r.text();
+    });
+  }
+  function hdr(pgn, name) { var m = pgn.match(new RegExp('\\[' + name + ' "([^"]*)"\\]')); return m ? m[1] : ''; }
+  function splitPgns(text) {
+    return String(text).split(/\n\s*\n(?=\[Event )/).map(function (x) { return x.trim(); }).filter(function (x) { return x.indexOf('[Event') === 0; });
+  }
+  async function fetchLichess(nick) {
+    var url = 'https://lichess.org/api/games/user/' + encodeURIComponent(nick) + '?max=15&clocks=false&evals=false&opening=false';
+    var txt = await httpGet(url, 'application/x-chess-pgn');
+    return splitPgns(typeof txt === 'string' ? txt : '');
+  }
+  async function fetchChessCom(nick) {
+    var base = 'https://api.chess.com/pub/player/' + encodeURIComponent(nick.toLowerCase());
+    var arch = await httpGet(base + '/games/archives', 'application/json');
+    if (typeof arch === 'string') arch = JSON.parse(arch);
+    var list = (arch && arch.archives) || [];
+    var out = [];
+    for (var k = list.length - 1; k >= 0 && out.length < 15 && k >= list.length - 3; k--) {
+      var month = await httpGet(list[k], 'application/json');
+      if (typeof month === 'string') month = JSON.parse(month);
+      var games = ((month && month.games) || []).slice().reverse();
+      games.forEach(function (g) { if (g.pgn) out.push(g.pgn); });
+    }
+    return out.slice(0, 15);
+  }
+  function gameLabel(pgn) {
+    var res = hdr(pgn, 'Result').replace('1/2-1/2', '½–½');
+    var date = hdr(pgn, 'Date').replace(/\./g, '-');
+    var tc = hdr(pgn, 'TimeControl');
+    var parts = [res, date, tc && tc !== '-' ? tc : ''].filter(Boolean);
+    return { title: (hdr(pgn, 'White') || '?') + ' — ' + (hdr(pgn, 'Black') || '?'), sub: parts.join(' · ') };
+  }
+  async function findGames() {
+    var nick = $('nick').value.trim();
+    var box = $('gamelist'); box.textContent = '';
+    if (!nick) { $('nickStatus').textContent = 'Введите ник.'; return; }
+    try { localStorage.setItem('chessreview.nick', nick); localStorage.setItem('chessreview.site', $('site').value); } catch (x) {}
+    $('bFind').disabled = true;
+    $('nickStatus').textContent = 'Ищу партии…';
+    try {
+      var pgns = $('site').value === 'lichess' ? await fetchLichess(nick) : await fetchChessCom(nick);
+      if (!pgns.length) { $('nickStatus').textContent = 'Партии не найдены. Проверьте ник и площадку.'; return; }
+      $('nickStatus').textContent = 'Нажмите на партию, чтобы разобрать её.';
+      pgns.forEach(function (pgn) {
+        var l = gameLabel(pgn);
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'gitem';
+        var t = document.createElement('span'); t.className = 'gt'; t.textContent = l.title;
+        var sub = document.createElement('span'); sub.className = 'gs'; sub.textContent = l.sub;
+        b.appendChild(t); b.appendChild(sub);
+        b.onclick = function () { $('pgn').value = pgn; showError(''); runAnalysis(); };
+        box.appendChild(b);
+      });
+    } catch (e) {
+      $('nickStatus').textContent = (e && e.status === 404) ? 'Игрок не найден.' : 'Не удалось загрузить партии. Проверьте интернет и ник.';
+    } finally { $('bFind').disabled = false; }
+  }
+  if (isApp) {
+    $('nickBox').hidden = false;
+    $('engineSel').hidden = false;
+    $('loader').open = true;
+    try {
+      var n0 = localStorage.getItem('chessreview.nick'); if (n0) $('nick').value = n0;
+      var s0 = localStorage.getItem('chessreview.site'); if (s0) $('site').value = s0;
+    } catch (x) {}
+    $('bFind').onclick = findGames;
+    $('nick').addEventListener('keydown', function (e) { if (e.key === 'Enter') findGames(); });
+  }
+
+  /* ---------- старт: пример партии ---------- */
+  renderLegend();
+  if (SAMPLE) {
+    $('pgn').value = SAMPLE.pgn || '';
+    show(SAMPLE.analysis, SAMPLE.analysis.moves.length > 30 ? 30 : -1);
+    $('status').textContent = 'Показан пример: «Партия в опере», Морфи, 1858. Свою партию загрузите ниже.';
+  }
+})();
+</script>
